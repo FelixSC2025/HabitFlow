@@ -451,11 +451,14 @@
   <div id="vc" class="view">
     <div class="hdr">
       <h1>Kalender</h1>
-      <button class="icon-btn" id="cal-refresh-btn" onclick="refreshCalendar()">⟳</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="icon-btn" id="cal-refresh-btn" onclick="refreshCalendar()">⟳</button>
+      </div>
     </div>
     <div class="scroll">
       <div id="cal-content"></div>
     </div>
+    <button class="fab" id="cal-add-btn" onclick="openAddCalEvent()" title="Event hinzufügen">+</button>
     <nav class="bnav">
       <button class="nb" onclick="nav('t')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Heute</button>
       <button class="nb" onclick="nav('h')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/></svg>Gewohnheiten</button>
@@ -712,6 +715,52 @@
   </div>
 </div>
 
+<!-- Add Calendar Event -->
+<div id="cal-event-m" class="mwrap" onclick="mclick(event,'cal-event-m')">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <h2>📅 Termin hinzufügen</h2>
+    <div class="fg">
+      <label class="lbl">Titel</label>
+      <input id="ce-title" class="inp" placeholder="Titel des Termins" maxlength="200">
+    </div>
+    <div class="fg">
+      <label class="lbl">Datum</label>
+      <input id="ce-date" class="inp" type="date">
+    </div>
+    <div class="fg" style="display:flex;align-items:center;justify-content:space-between;padding:4px 0">
+      <label class="lbl" style="margin:0">Ganztägig</label>
+      <button id="ce-allday-btn" onclick="toggleCalAllDay()" style="width:44px;height:26px;border-radius:13px;background:var(--border);border:none;cursor:pointer;transition:background .2s;position:relative;flex-shrink:0">
+        <span id="ce-allday-knob" style="position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.2)"></span>
+      </button>
+    </div>
+    <div id="ce-time-fields">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="fg">
+          <label class="lbl">Von</label>
+          <input id="ce-start" class="inp" type="time" value="09:00">
+        </div>
+        <div class="fg">
+          <label class="lbl">Bis</label>
+          <input id="ce-end" class="inp" type="time" value="10:00">
+        </div>
+      </div>
+    </div>
+    <div class="fg">
+      <label class="lbl">Ort (optional)</label>
+      <input id="ce-loc" class="inp" placeholder="z.B. Berlin, Zoom-Link..." maxlength="200">
+    </div>
+    <div class="fg">
+      <label class="lbl">Beschreibung (optional)</label>
+      <textarea id="ce-desc" class="inp" placeholder="Notizen zum Termin..." style="min-height:60px"></textarea>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-g" style="flex:1" onclick="closeM('cal-event-m')">Abbrechen</button>
+      <button class="btn btn-p" style="flex:2" id="ce-save-btn" onclick="createCalendarEvent()">Speichern 📅</button>
+    </div>
+  </div>
+</div>
+
 <!-- Weekly Review -->
 <div id="wr-modal" class="wr-wrap" onclick="wrBackdropClick(event)">
   <div class="wr-inner">
@@ -827,7 +876,7 @@ const dref  = () => uref().collection('daily');
 
 function loginGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
-  provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
+  provider.addScope('https://www.googleapis.com/auth/calendar.events');
   auth.signInWithPopup(provider).then(result => {
     const token = result.credential?.accessToken;
     if (token) storeCalToken(token);
@@ -1157,7 +1206,7 @@ async function silentCalRefresh() {
   if (!auth?.currentUser) return false;
   try {
     const p = new firebase.auth.GoogleAuthProvider();
-    p.addScope('https://www.googleapis.com/auth/calendar.readonly');
+    p.addScope('https://www.googleapis.com/auth/calendar.events');
     p.setCustomParameters({ prompt: 'none' });
     const r = await auth.signInWithPopup(p);
     const t = r.credential?.accessToken;
@@ -1252,7 +1301,7 @@ async function tryRefreshCalToken() {
   if (!auth?.currentUser) return false;
   try {
     const p = new firebase.auth.GoogleAuthProvider();
-    p.addScope('https://www.googleapis.com/auth/calendar.readonly');
+    p.addScope('https://www.googleapis.com/auth/calendar.events');
     p.setCustomParameters({ prompt: 'none' });
     const r = await auth.signInWithPopup(p);
     const t = r.credential?.accessToken;
@@ -1263,7 +1312,7 @@ async function tryRefreshCalToken() {
 
 function connectCalendar() {
   const provider = new firebase.auth.GoogleAuthProvider();
-  provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
+  provider.addScope('https://www.googleapis.com/auth/calendar.events');
   provider.setCustomParameters({ prompt: 'consent' });
   auth.signInWithPopup(provider).then(result => {
     const token = result.credential?.accessToken;
@@ -1378,6 +1427,8 @@ function renderFreeWindow(win) {
 function renderCalendar(events) {
   const el = document.getElementById('cal-content');
   if (!el) return;
+  const fab = document.getElementById('cal-add-btn');
+  if (fab) fab.style.display = '';
 
   // ── Sektion A: Heute ──────────────────────────────────────────
   const todayEvs = events.filter(ev => (ev.start.dateTime || ev.start.date || '').startsWith(TD));
@@ -1450,6 +1501,8 @@ function renderCalendar(events) {
 function renderCalendarNoAuth() {
   const el = document.getElementById('cal-content');
   if (!el) return;
+  const fab = document.getElementById('cal-add-btn');
+  if (fab) fab.style.display = 'none';
   el.innerHTML = `
     <div style="padding:44px 24px;text-align:center">
       <div style="font-size:52px;margin-bottom:16px">📅</div>
@@ -1499,6 +1552,132 @@ function renderCalendarApiError(msg, status) {
         <button class="btn btn-g btn-sm" onclick="loadCalendarEvents()">Neu laden</button>
       </div>
     </div>`;
+}
+
+// ── ADD CALENDAR EVENT ────────────────────────────────────────────────
+let calAlldayMode = false;
+
+function openAddCalEvent() {
+  const token = localStorage.getItem('hf_cal_token');
+  if (!token && !localStorage.getItem('hf_cal_connected')) {
+    toast('Bitte zuerst Kalender verbinden');
+    return;
+  }
+  calAlldayMode = false;
+  const today = new Date();
+  const dateStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+  document.getElementById('ce-title').value = '';
+  document.getElementById('ce-date').value = dateStr;
+  document.getElementById('ce-start').value = '09:00';
+  document.getElementById('ce-end').value = '10:00';
+  document.getElementById('ce-loc').value = '';
+  document.getElementById('ce-desc').value = '';
+  document.getElementById('ce-time-fields').style.display = '';
+  document.getElementById('ce-allday-btn').style.background = 'var(--border)';
+  document.getElementById('ce-allday-knob').style.left = '3px';
+  document.getElementById('ce-save-btn').textContent = 'Speichern 📅';
+  document.getElementById('ce-save-btn').disabled = false;
+  document.getElementById('cal-event-m').classList.add('open');
+  setTimeout(() => document.getElementById('ce-title').focus(), 300);
+}
+
+function toggleCalAllDay() {
+  calAlldayMode = !calAlldayMode;
+  const btn = document.getElementById('ce-allday-btn');
+  const knob = document.getElementById('ce-allday-knob');
+  const fields = document.getElementById('ce-time-fields');
+  if (calAlldayMode) {
+    btn.style.background = 'var(--ok)';
+    knob.style.left = '21px';
+    fields.style.display = 'none';
+  } else {
+    btn.style.background = 'var(--border)';
+    knob.style.left = '3px';
+    fields.style.display = '';
+  }
+}
+
+async function createCalendarEvent() {
+  const title = document.getElementById('ce-title').value.trim();
+  if (!title) { toast('Bitte Titel eingeben'); return; }
+
+  const date = document.getElementById('ce-date').value;
+  if (!date) { toast('Bitte Datum wählen'); return; }
+
+  let token = localStorage.getItem('hf_cal_token');
+  if (!token || isCalTokenExpired()) {
+    const ok = await tryRefreshCalToken();
+    if (!ok) { toast('Bitte Kalender neu verbinden'); connectCalendar(); return; }
+    token = localStorage.getItem('hf_cal_token');
+  }
+
+  const btn = document.getElementById('ce-save-btn');
+  btn.textContent = '...';
+  btn.disabled = true;
+
+  let eventBody;
+  if (calAlldayMode) {
+    const nextDay = new Date(date + 'T12:00:00');
+    nextDay.setDate(nextDay.getDate() + 1);
+    const endDate = nextDay.getFullYear() + '-' + String(nextDay.getMonth()+1).padStart(2,'0') + '-' + String(nextDay.getDate()).padStart(2,'0');
+    eventBody = {
+      summary: title,
+      start: { date },
+      end: { date: endDate }
+    };
+  } else {
+    const startVal = document.getElementById('ce-start').value || '09:00';
+    const endVal = document.getElementById('ce-end').value || '10:00';
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    eventBody = {
+      summary: title,
+      start: { dateTime: `${date}T${startVal}:00`, timeZone: tz },
+      end:   { dateTime: `${date}T${endVal}:00`,   timeZone: tz }
+    };
+  }
+
+  const loc = document.getElementById('ce-loc').value.trim();
+  const desc = document.getElementById('ce-desc').value.trim();
+  if (loc) eventBody.location = loc;
+  if (desc) eventBody.description = desc;
+
+  try {
+    const r = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(eventBody)
+    });
+
+    if (r.status === 401) {
+      const ok = await tryRefreshCalToken();
+      if (ok) { btn.textContent = 'Speichern 📅'; btn.disabled = false; createCalendarEvent(); return; }
+      toast('Sitzung abgelaufen — bitte Kalender neu verbinden');
+      connectCalendar();
+      closeM('cal-event-m');
+      return;
+    }
+
+    if (r.status === 403) {
+      toast('Keine Schreibrechte — Kalender wird neu verbunden...');
+      closeM('cal-event-m');
+      connectCalendar();
+      return;
+    }
+
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      toast('Fehler: ' + (err?.error?.message || r.status));
+      btn.textContent = 'Speichern 📅'; btn.disabled = false;
+      return;
+    }
+
+    toast('✅ Termin gespeichert!');
+    closeM('cal-event-m');
+    loadCalendarEvents(false);
+  } catch(e) {
+    toast('Netzwerkfehler: ' + e.message);
+    btn.textContent = 'Speichern 📅'; btn.disabled = false;
+  }
 }
 
 // ── TICKTICK ──────────────────────────────────────────────────────────
