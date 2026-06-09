@@ -876,6 +876,7 @@ const dref  = () => uref().collection('daily');
 
 function loginGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
+  provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
   provider.addScope('https://www.googleapis.com/auth/calendar.events');
   auth.signInWithPopup(provider).then(result => {
     const token = result.credential?.accessToken;
@@ -1206,6 +1207,7 @@ async function silentCalRefresh() {
   if (!auth?.currentUser) return false;
   try {
     const p = new firebase.auth.GoogleAuthProvider();
+    p.addScope('https://www.googleapis.com/auth/calendar.readonly');
     p.addScope('https://www.googleapis.com/auth/calendar.events');
     p.setCustomParameters({ prompt: 'none' });
     const r = await auth.signInWithPopup(p);
@@ -1301,6 +1303,7 @@ async function tryRefreshCalToken() {
   if (!auth?.currentUser) return false;
   try {
     const p = new firebase.auth.GoogleAuthProvider();
+    p.addScope('https://www.googleapis.com/auth/calendar.readonly');
     p.addScope('https://www.googleapis.com/auth/calendar.events');
     p.setCustomParameters({ prompt: 'none' });
     const r = await auth.signInWithPopup(p);
@@ -1312,6 +1315,7 @@ async function tryRefreshCalToken() {
 
 function connectCalendar() {
   const provider = new firebase.auth.GoogleAuthProvider();
+  provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
   provider.addScope('https://www.googleapis.com/auth/calendar.events');
   provider.setCustomParameters({ prompt: 'consent' });
   auth.signInWithPopup(provider).then(result => {
@@ -1533,14 +1537,21 @@ function renderCalendarError() {
 function renderCalendarApiError(msg, status) {
   const el = document.getElementById('cal-content');
   if (!el) return;
+  const isScopeError = msg && msg.toLowerCase().includes('insufficient authentication scopes');
   const is403 = status === 403;
-  const hint = is403
-    ? `<div style="font-size:12px;color:var(--t2);margin-top:12px;padding:10px;background:var(--s2);border-radius:var(--rs);text-align:left;line-height:1.6">
-        <strong>So beheben:</strong><br>
-        1. <a href="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com" target="_blank" style="color:var(--p)">Google Calendar API aktivieren</a> im Cloud Console<br>
-        2. Danach "Erneut verbinden" tippen
-       </div>`
-    : '';
+  let hint = '';
+  if (isScopeError) {
+    hint = `<div style="font-size:13px;color:var(--t2);margin-top:12px;line-height:1.6">
+      Dein Kalender-Token hat nicht die nötigen Berechtigungen.<br>
+      Bitte einmal <strong style="color:var(--t1)">neu verbinden</strong> — das behebt das Problem sofort.
+    </div>`;
+  } else if (is403) {
+    hint = `<div style="font-size:12px;color:var(--t2);margin-top:12px;padding:10px;background:var(--s2);border-radius:var(--rs);text-align:left;line-height:1.6">
+      <strong>So beheben:</strong><br>
+      1. <a href="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com" target="_blank" style="color:var(--p)">Google Calendar API aktivieren</a> im Cloud Console<br>
+      2. Danach "Erneut verbinden" tippen
+    </div>`;
+  }
   el.innerHTML = `
     <div style="padding:44px 24px;text-align:center">
       <div style="font-size:52px;margin-bottom:16px">🔒</div>
