@@ -116,7 +116,7 @@
   /* MODAL */
   .mwrap{position:absolute;inset:0;background:rgba(0,0,0,.75);z-index:100;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .22s}
   .mwrap.open{opacity:1;pointer-events:all}
-  .modal{background:var(--s1);border-radius:22px 22px 0 0;width:100%;max-height:92vh;overflow-y:auto;padding:12px 20px 44px;border-top:1px solid var(--border);transform:translateY(40px);transition:transform .28s cubic-bezier(.4,0,.2,1)}
+  .modal{background:var(--s1);border-radius:22px 22px 0 0;width:100%;max-height:calc(100dvh - env(safe-area-inset-top,0px) - 56px);overflow-y:auto;padding:12px 20px calc(28px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);transform:translateY(40px);transition:transform .28s cubic-bezier(.4,0,.2,1)}
   .mwrap.open .modal{transform:translateY(0)}
   .mhandle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px}
   .modal h2{font-size:19px;font-weight:800;margin-bottom:18px;letter-spacing:-.3px}
@@ -240,6 +240,43 @@
   .cal-spin{display:inline-block;animation:calSpin .8s linear infinite}
   @keyframes calSpin{to{transform:rotate(360deg)}}
 
+  /* ═══ WEEKLY REVIEW ════════════════════════════════════════ */
+  .wr-wrap{position:absolute;inset:0;background:rgba(0,0,0,.75);z-index:150;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .22s}
+  .wr-wrap.open{opacity:1;pointer-events:all}
+  .wr-inner{background:var(--s1);border:1px solid var(--border);border-radius:20px;width:100%;max-width:460px;max-height:calc(100dvh - 80px);display:flex;flex-direction:column;transform:scale(.95) translateY(12px);transition:transform .28s cubic-bezier(.4,0,.2,1);overflow:hidden}
+  .wr-wrap.open .wr-inner{transform:scale(1) translateY(0)}
+  @media(max-width:639px){.wr-wrap{padding:0;align-items:flex-end}.wr-inner{border-radius:20px 20px 0 0;max-height:calc(100dvh - env(safe-area-inset-top,0px) - 20px)}}
+  .wr-hdr{padding:16px 20px 0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+  .wr-dots{display:flex;gap:5px;align-items:center}
+  .wr-dot{width:8px;height:8px;border-radius:4px;background:var(--border);transition:all .2s}
+  .wr-dot.on{background:var(--p);width:20px}
+  .wr-x{width:28px;height:28px;border-radius:50%;background:var(--s2);border:none;color:var(--t2);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}
+  .wr-body{flex:1;overflow-y:auto;padding:18px 20px 4px;-webkit-overflow-scrolling:touch}
+  .wr-body::-webkit-scrollbar{display:none}
+  .wr-step{display:none;animation:wrIn .2s ease}
+  .wr-step.on{display:block}
+  @keyframes wrIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  .wr-title{font-size:19px;font-weight:800;letter-spacing:-.3px;margin-bottom:4px}
+  .wr-sub{font-size:13px;color:var(--t2);margin-bottom:16px;line-height:1.5}
+  .wr-hcard{background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:13px;margin-bottom:8px}
+  .wr-hcard.good{border-color:rgba(45,212,160,.35);background:rgba(45,212,160,.07)}
+  .wr-hcard.struggle{border-color:rgba(252,106,106,.35);background:rgba(252,106,106,.07)}
+  .wr-hcard-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+  .wr-hcard-name{font-size:14px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px}
+  .wr-hcard-pct{font-size:13px;font-weight:700;color:var(--t2);flex-shrink:0}
+  .wr-hcard-pct.good{color:var(--ok)}
+  .wr-hcard-pct.struggle{color:var(--err)}
+  .wr-strip{display:flex;gap:4px}
+  .wr-circ{flex:1;aspect-ratio:1;border-radius:50%;background:var(--s3);border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:8px;color:var(--t3);font-weight:700;max-width:34px;min-width:0}
+  .wr-circ.done{background:var(--ok);border-color:var(--ok);color:#000}
+  .wr-hsel{display:flex;align-items:center;gap:12px;padding:13px 14px;background:var(--s2);border:2px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;transition:all .15s;-webkit-tap-highlight-color:transparent}
+  .wr-hsel:active{transform:scale(.98)}
+  .wr-hsel.on{border-color:var(--p);background:rgba(124,111,247,.1)}
+  .wr-hsel-name{font-size:14px;font-weight:700}
+  .wr-hsel-sub{font-size:12px;color:var(--t2);margin-top:2px}
+  .wr-edit-box{background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:10px;animation:wrIn .18s ease}
+  .wr-foot{padding:12px 20px calc(16px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;border-top:1px solid var(--border);flex-shrink:0;background:var(--s1)}
+
   /* TICKTICK TASKS */
   .tt-task{display:flex;align-items:center;padding:12px 16px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);margin:0 16px 8px;gap:12px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s}
   .tt-task:active{background:var(--s2)}
@@ -309,8 +346,9 @@
   <!-- TODAY VIEW -->
   <div id="vt" class="view active">
     <div class="scroll">
-      <div class="today-hero">
+      <div class="today-hero" style="position:relative">
         <div class="greeting" id="greeting">Guten Morgen! 🌅</div>
+        <button class="icon-btn" onclick="openWeeklyReview()" title="Wochenrückblick" style="position:absolute;top:calc(20px + env(safe-area-inset-top,0px));right:0;font-size:16px">📊</button>
         <div class="today-sub" id="datestr"></div>
         <div class="prog-text">
           <span id="prog-lbl">Lade...</span>
@@ -674,6 +712,29 @@
   </div>
 </div>
 
+<!-- Weekly Review -->
+<div id="wr-modal" class="wr-wrap" onclick="wrBackdropClick(event)">
+  <div class="wr-inner">
+    <div class="wr-hdr">
+      <div class="wr-dots">
+        <div class="wr-dot on" id="wr-d1"></div>
+        <div class="wr-dot" id="wr-d2"></div>
+        <div class="wr-dot" id="wr-d3"></div>
+      </div>
+      <button class="wr-x" onclick="wrClose()">✕</button>
+    </div>
+    <div class="wr-body" id="wr-body">
+      <div id="wr-s1" class="wr-step on"></div>
+      <div id="wr-s2" class="wr-step"></div>
+      <div id="wr-s3" class="wr-step"></div>
+    </div>
+    <div class="wr-foot">
+      <button id="wr-back-btn" class="btn btn-g" style="flex:1;display:none" onclick="wrNav(-1)">← Zurück</button>
+      <button id="wr-next-btn" class="btn btn-p" style="flex:2" onclick="wrNav(1)">Weiter →</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ JAVASCRIPT ════════════════════════════════════════════ -->
 <script>
 'use strict';
@@ -827,6 +888,7 @@ async function startApp() {
   uref().set({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }, { merge: true }).catch(()=>{});
   await Promise.all([loadHabits(), loadToday(), loadGoals()]);
   checkMissBanner();
+  checkWeeklyReview();
   initTickTick();
   if (localStorage.getItem('hf_cal_token') || localStorage.getItem('hf_cal_connected')) loadCalendarEvents();
   scheduleNotifications();
@@ -2185,6 +2247,260 @@ function toast(msg){
 function show(id)  { document.getElementById(id).classList.remove('hidden'); }
 function hide(id)  { document.getElementById(id).classList.add('hidden'); }
 function showEl(id){ document.getElementById(id).style.display='flex'; }
+
+// ── WEEKLY REVIEW ──────────────────────────────────────────────────
+let wrStep = 1, wrHabitData = [], wrSelHabitId = null;
+
+const WR_DAY_LABELS = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+
+function getISOWeekNum(date) {
+  const d = new Date(date);
+  d.setHours(0,0,0,0);
+  const dow = d.getDay() || 7;
+  d.setDate(d.getDate() + 4 - dow);
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  return { year: d.getFullYear(), week: Math.ceil(((d - yearStart) / 86400000 + 1) / 7) };
+}
+
+function getLastWeekRange() {
+  const dow = TODAY.getDay();
+  const sun = new Date(TODAY);
+  if (dow !== 0) sun.setDate(TODAY.getDate() - dow);
+  const mon = new Date(sun); mon.setDate(sun.getDate() - 6);
+  return { mon, sun };
+}
+
+function wrKey() {
+  const { sun } = getLastWeekRange();
+  const { year, week } = getISOWeekNum(sun);
+  return `review_${year}-W${String(week).padStart(2,'0')}`;
+}
+
+function checkWeeklyReview() {
+  if (TODAY.getDay() !== 0) return;
+  const saved = loadLocal(wrKey());
+  if (saved && saved.dismissed) return;
+  setTimeout(openWeeklyReview, 900);
+}
+
+async function openWeeklyReview() {
+  wrStep = 1;
+  wrSelHabitId = null;
+
+  const { mon, sun } = getLastWeekRange();
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(mon); d.setDate(mon.getDate() + i);
+    days.push(d.toISOString().split('T')[0]);
+  }
+
+  const cmap = {};
+  try {
+    const s = await cref().where('date', 'in', days).get();
+    s.docs.forEach(d => { const x = d.data(); cmap[`${x.date}_${x.habitId}`] = x.completed; });
+  } catch(e) {}
+
+  wrHabitData = habits.map(h => {
+    let count = 0;
+    const completions = {};
+    days.forEach(day => {
+      const done = !!cmap[`${day}_${h.id}`];
+      completions[day] = done;
+      if (done) count++;
+    });
+    return { habit: h, days, completions, rate: Math.round(count / 7 * 100), count };
+  }).sort((a, b) => a.rate - b.rate);
+
+  document.getElementById('wr-modal').classList.add('open');
+  wrRenderStep(1);
+}
+
+function wrRenderStep(n) {
+  wrStep = n;
+  [1,2,3].forEach(i => {
+    document.getElementById(`wr-d${i}`).classList.toggle('on', i === n);
+    document.getElementById(`wr-s${i}`).classList.toggle('on', i === n);
+  });
+  document.getElementById('wr-back-btn').style.display = n === 1 ? 'none' : 'flex';
+  document.getElementById('wr-next-btn').textContent = n === 3 ? 'Fertig ✓' : 'Weiter →';
+  const body = document.getElementById('wr-body');
+  if (body) body.scrollTop = 0;
+  if (n === 1) wrBuildStep1();
+  if (n === 2) wrBuildStep2();
+  if (n === 3) wrBuildStep3();
+}
+
+function wrBuildStep1() {
+  const { mon, sun } = getLastWeekRange();
+  const fmt = d => `${d.getDate()}. ${MONTHS[d.getMonth()].slice(0,3)}.`;
+  const { week } = getISOWeekNum(sun);
+
+  const cards = wrHabitData.length ? wrHabitData.map(({ habit: h, days, completions, count, rate }) => {
+    const cls = rate >= 80 ? ' good' : rate <= 30 ? ' struggle' : '';
+    const pctCls = rate >= 80 ? ' good' : rate <= 30 ? ' struggle' : '';
+    const strip = days.map((day, i) =>
+      `<div class="wr-circ${completions[day] ? ' done' : ''}">${WR_DAY_LABELS[i]}</div>`
+    ).join('');
+    return `<div class="wr-hcard${cls}">
+      <div class="wr-hcard-top">
+        <div class="wr-hcard-name">${h.icon||'⭐'} ${h.name}</div>
+        <div class="wr-hcard-pct${pctCls}">${count}/7 · ${rate}%</div>
+      </div>
+      <div class="wr-strip">${strip}</div>
+    </div>`;
+  }).join('') : `<div class="empty"><div class="ed">Noch keine Gewohnheiten vorhanden.</div></div>`;
+
+  document.getElementById('wr-s1').innerHTML = `
+    <div class="wr-title">📊 Woche ${week} Rückblick</div>
+    <div class="wr-sub">${fmt(mon)} – ${fmt(sun)} · ${wrHabitData.length} Gewohnheit${wrHabitData.length !== 1 ? 'en' : ''}</div>
+    ${cards}`;
+}
+
+function wrBuildStep2() {
+  const saved = loadLocal(wrKey()) || {};
+  document.getElementById('wr-s2').innerHTML = `
+    <div class="wr-title">💬 Ehrliche Reflexion</div>
+    <div class="wr-sub">Was lief gut? Was nicht? Auch ein Satz hilft.</div>
+    <div class="fg">
+      <textarea id="wr-reflect" class="inp" style="min-height:130px" maxlength="500" placeholder="Ehrlich sein — auch ein Satz hilft."></textarea>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t3);margin-top:5px">
+        <span>Überspringen ist ok → Weiter</span>
+        <span><span id="wr-char-cnt">0</span>/500</span>
+      </div>
+    </div>`;
+  const ta = document.getElementById('wr-reflect');
+  if (ta) {
+    ta.value = saved.reflection || '';
+    document.getElementById('wr-char-cnt').textContent = ta.value.length;
+    ta.addEventListener('input', () => {
+      document.getElementById('wr-char-cnt').textContent = ta.value.length;
+    });
+    setTimeout(() => ta.focus(), 80);
+  }
+}
+
+function wrBuildStep3() {
+  const noneItem = `<div class="wr-hsel${wrSelHabitId === 'none' ? ' on' : ''}" onclick="wrSelHabit('none',this)">
+    <div style="font-size:22px">✋</div>
+    <div><div class="wr-hsel-name">Nichts ändern — alles bleibt so</div></div>
+  </div>`;
+
+  const habitItems = wrHabitData.map(({ habit: h, rate }) =>
+    `<div class="wr-hsel${wrSelHabitId === h.id ? ' on' : ''}" onclick="wrSelHabit('${h.id}',this)">
+      <div style="font-size:22px">${h.icon||'⭐'}</div>
+      <div>
+        <div class="wr-hsel-name">${h.name}</div>
+        <div class="wr-hsel-sub">${rate}% letzte Woche</div>
+      </div>
+    </div>`
+  ).join('');
+
+  document.getElementById('wr-s3').innerHTML = `
+    <div class="wr-title">🎯 Eine Gewohnheit anpassen</div>
+    <div class="wr-sub">Wähle genau eine zum Tweaken — oder behalte alles.</div>
+    ${noneItem}${habitItems}
+    <div id="wr-edit-wrap"></div>`;
+
+  if (wrSelHabitId && wrSelHabitId !== 'none') wrShowEditForm(wrSelHabitId);
+}
+
+function wrSelHabit(id, el) {
+  wrSelHabitId = id;
+  document.querySelectorAll('#wr-s3 .wr-hsel').forEach(x => x.classList.remove('on'));
+  el.classList.add('on');
+  const wrap = document.getElementById('wr-edit-wrap');
+  if (id === 'none') { wrap.innerHTML = ''; return; }
+  wrShowEditForm(id);
+}
+
+function wrShowEditForm(id) {
+  const h = habits.find(x => x.id === id);
+  if (!h) return;
+  const wrap = document.getElementById('wr-edit-wrap');
+  if (!wrap) return;
+  const freqOpts = [1,2,3,4,5,6,7].map(n =>
+    `<option value="${n}"${(h.targetFreq||7)===n?' selected':''}>${n}× pro Woche</option>`
+  ).join('');
+  wrap.innerHTML = `
+    <div class="wr-edit-box">
+      <div style="font-size:12px;font-weight:700;color:var(--p);text-transform:uppercase;letter-spacing:.7px;margin-bottom:12px">${h.icon||'⭐'} ${h.name} anpassen</div>
+      <div class="fg">
+        <label class="lbl">Name</label>
+        <input id="wr-e-name" class="inp" value="${h.name.replace(/"/g,'&quot;')}" maxlength="70">
+      </div>
+      <div class="fg">
+        <label class="lbl">Ziel-Häufigkeit</label>
+        <select id="wr-e-freq" class="inp">${freqOpts}</select>
+      </div>
+      <div class="fg" style="margin-bottom:0">
+        <label class="lbl">Erinnerungszeit (optional)</label>
+        <input id="wr-e-notify" class="inp" type="time" value="${h.notifyAt||''}">
+      </div>
+    </div>`;
+}
+
+function wrNav(dir) {
+  if (wrStep === 2) wrSaveReflection();
+  if (dir === 1 && wrStep === 3) { wrFinish(); return; }
+  const next = wrStep + dir;
+  if (next < 1 || next > 3) return;
+  wrRenderStep(next);
+}
+
+function wrSaveReflection() {
+  const ta = document.getElementById('wr-reflect');
+  if (!ta) return;
+  const saved = loadLocal(wrKey()) || {};
+  saved.reflection = ta.value;
+  saveLocal(wrKey(), saved);
+}
+
+async function wrSaveHabitEdit(id) {
+  const nameEl = document.getElementById('wr-e-name');
+  const name = nameEl ? nameEl.value.trim() : '';
+  if (!name) return;
+  const freq = parseInt(document.getElementById('wr-e-freq')?.value) || 7;
+  const notify = document.getElementById('wr-e-notify')?.value.trim() || null;
+  const updates = { name, targetFreq: freq, notifyAt: notify };
+  try {
+    await href().doc(id).update(updates);
+    const h = habits.find(x => x.id === id);
+    if (h) Object.assign(h, updates);
+    saveLocal('habits', habits);
+    renderAll();
+  } catch(e) { toast('Fehler beim Speichern der Gewohnheit'); }
+}
+
+function wrFinish() {
+  const ta = document.getElementById('wr-reflect');
+  const saved = loadLocal(wrKey()) || {};
+  if (ta) saved.reflection = ta.value;
+  saved.dismissed = true;
+  saved.completedAt = new Date().toISOString();
+  saveLocal(wrKey(), saved);
+  document.getElementById('wr-modal').classList.remove('open');
+  toast('✅ Wochenrückblick gespeichert!');
+  if (wrSelHabitId && wrSelHabitId !== 'none') wrSaveHabitEdit(wrSelHabitId);
+}
+
+function wrClose() {
+  const ta = document.getElementById('wr-reflect');
+  const saved = loadLocal(wrKey()) || {};
+  if (ta) saved.reflection = ta.value;
+  saved.dismissed = true;
+  saved.completedAt = new Date().toISOString();
+  saveLocal(wrKey(), saved);
+  document.getElementById('wr-modal').classList.remove('open');
+  if (wrStep === 3 && wrSelHabitId && wrSelHabitId !== 'none') wrSaveHabitEdit(wrSelHabitId);
+}
+
+function wrBackdropClick(e) {
+  if (e.target.id === 'wr-modal') wrClose();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('wr-modal')?.classList.contains('open')) wrClose();
+});
 
 // ── BOOT ─────────────────────────────────────────────────────────────
 window.addEventListener('load', async ()=>{
