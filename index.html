@@ -9,6 +9,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
   <style>
   :root {
     --bg:#f5f5fa; --s1:#ffffff; --s2:#ededf5; --s3:#e0e0ee;
@@ -705,7 +706,11 @@ const CHALLENGES = [
 ];
 
 // ── STATE ──────────────────────────────────────────────────────────
-let db, auth, uid;
+let db, auth, uid, messaging;
+let swReg = null;
+let fcmListenerSet = false;
+// ↓ VAPID-Key aus Firebase Console → Projekteinstellungen → Cloud Messaging → Web-Push-Zertifikate
+const FCM_VAPID_KEY = 'YOUR_VAPID_KEY_HERE';
 let habits = [], goals = [];
 let todayComp = {}, todayLog = {};
 let obArea = null, obChal = null;
@@ -731,6 +736,7 @@ function initFB(cfg) {
       if (err.code !== 'unimplemented') toast('Offline-Cache nicht verfügbar');
     });
     auth = firebase.auth();
+    try { messaging = firebase.messaging(); } catch(e) {}
     auth.onAuthStateChanged(onAuth);
   } catch(e) { toast('Firebase-Fehler: ' + e.message); }
 }
@@ -827,7 +833,7 @@ async function startApp() {
 function setDateHeader() {
   const d = TODAY;
   document.getElementById('datestr').textContent = `${DAYS[d.getDay()]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-  let g = HR < 5 ? 'Gute Nacht 🌙' : HR < 12 ? 'Guten Morgen! 🌅' : HR < 17 ? 'Guten Tag! ☀️' : HR < 21 ? 'Guten Abend! 🌆' : 'Gute Nacht 🌙';
+  let g = HR < 5 ? 'Gute Nacht, Felix🌙' : HR < 12 ? 'Guten Morgen, Felix! 🌅' : HR < 17 ? 'Guten Tag! ☀️' : HR < 21 ? 'Guten Abend, Felix! 🌆' : 'Gute Nacht, Felix🌙';
   document.getElementById('greeting').textContent = g;
   if (HR >= 5 && HR < 11) document.getElementById('morning-card').style.display = 'block';
   if (HR >= 18)           document.getElementById('evening-card').style.display = 'block';
@@ -1960,63 +1966,65 @@ function buildLocalSuggestion(q) {
 
 // ── NOTIFICATIONS ─────────────────────────────────────────────────────
 async function registerSW() {
-  if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
+  if (!('serviceWorker' in navigator)) return;
   try {
-    const reg = await navigator.serviceWorker.register('./sw.js');
-    console.log('SW registered:', reg.scope);
+    swReg = await navigator.serviceWorker.register('./sw.js');
+    console.log('SW registered:', swReg.scope);
   } catch(e) {
     console.warn('SW registration failed:', e);
   }
 }
 
-async function scheduleNotifications() {
-  if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
+async function setupFCMPush() {
+  if (!messaging || !uid || FCM_VAPID_KEY === 'YOUR_VAPID_KEY_HERE') return;
   if (Notification.permission !== 'granted') return;
-
-  const reg = await navigator.serviceWorker.ready;
-  if (!reg.active) return;
-
-  const now = new Date();
-  const alarms = [];
-
-  habits.forEach(h => {
-    if (!h.notifyAt) return;
-    if (todayComp[h.id]) return;
-
-    const [hh, mm] = h.notifyAt.split(':').map(Number);
-    const fireDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0);
-
-    if (fireDate <= now) return;
-
-    alarms.push({
-      id: h.id,
-      title: `${h.icon || '⭐'} ${h.name}`,
-      body: h.twoMinuteVersion
-        ? `2-Min-Version: ${h.twoMinuteVersion}`
-        : (h.cue ? `Auslöser: ${h.cue}` : 'Zeit für deine Gewohnheit!'),
-      fireAt: fireDate.getTime()
+  try {
+    const reg = swReg || await navigator.serviceWorker.ready;
+    const token = await messaging.getToken({
+      vapidKey: FCM_VAPID_KEY,
+      serviceWorkerRegistration: reg
     });
-  });
+    if (token) {
+      await uref().collection('fcmTokens').doc(token).set({
+        token,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        ua: navigator.userAgent.slice(0, 200)
+      });
+    }
+    if (!fcmListenerSet) {
+      messaging.onMessage(payload => {
+        const title = payload.notification?.title || payload.data?.title || 'HabitFlow';
+        toast(`🔔 ${title}`);
+      });
+      fcmListenerSet = true;
+    }
+  } catch(e) {
+    console.warn('FCM setup error:', e.message);
+  }
+}
 
-  reg.active.postMessage({ type: 'SCHEDULE', alarms });
+async function scheduleNotifications() {
+  await setupFCMPush();
 }
 
 async function requestNotifPerm() {
   const result = await Notification.requestPermission();
   if (result === 'granted') {
     toast('🔔 Benachrichtigungen aktiviert!');
-    await scheduleNotifications();
+    await setupFCMPush();
   } else {
     toast('Benachrichtigungen verweigert');
   }
   renderNotifSettings();
 }
 
-function sendTestNotif() {
+async function sendTestNotif() {
   if (Notification.permission !== 'granted') return;
-  new Notification('🔥 HabitFlow Test', {
+  const reg = swReg || await navigator.serviceWorker.ready;
+  reg.showNotification('🔥 HabitFlow Test', {
     body: 'Benachrichtigungen funktionieren!',
-    icon: '/icon-192.png'
+    icon: '/icon-192.png',
+    badge: '/icon-192.png'
   });
 }
 
