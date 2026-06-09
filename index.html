@@ -11,14 +11,23 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <style>
   :root {
-    --bg:#08080f; --s1:#111118; --s2:#1c1c28; --s3:#252535;
-    --border:#2c2c40; --t1:#eeeef8; --t2:#7878a0; --t3:#4a4a68;
-    --p:#7c6ff7; --pd:#5b4fd4; --ok:#2dd4a0; --warn:#f0b429;
-    --err:#fc6a6a; --purple:#a855f7; --r:16px; --rs:10px;
+    --bg:#f5f5fa; --s1:#ffffff; --s2:#ededf5; --s3:#e0e0ee;
+    --border:#d0d0e8; --t1:#111118; --t2:#5a5a80; --t3:#9090b0;
+    --p:#7c6ff7; --pd:#5b4fd4; --ok:#17a87a; --warn:#d4920a;
+    --err:#e04444; --purple:#a855f7; --r:16px; --rs:10px;
+    --nav-bg:rgba(250,250,252,.96);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#08080f; --s1:#111118; --s2:#1c1c28; --s3:#252535;
+      --border:#2c2c40; --t1:#eeeef8; --t2:#7878a0; --t3:#4a4a68;
+      --ok:#2dd4a0; --warn:#f0b429; --err:#fc6a6a;
+      --nav-bg:rgba(17,17,24,.96);
+    }
   }
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--t1);-webkit-font-smoothing:antialiased;overflow:hidden}
-  #root{height:100vh;max-width:430px;margin:0 auto;position:relative;display:flex;flex-direction:column;overflow:hidden}
+  #root{height:100vh;height:100dvh;max-width:430px;margin:0 auto;position:relative;display:flex;flex-direction:column;overflow:hidden}
 
   /* FULL-PAGE SCREENS */
   .fullpage{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;text-align:center;background:var(--bg);z-index:200;overflow-y:auto}
@@ -30,11 +39,11 @@
   .view.prev{transform:translateX(-25%);opacity:0}
 
   /* SCROLL */
-  .scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:88px}
+  .scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:calc(88px + env(safe-area-inset-bottom,0px))}
   .scroll::-webkit-scrollbar{display:none}
 
   /* BOTTOM NAV */
-  .bnav{position:absolute;bottom:0;left:0;right:0;height:72px;background:rgba(17,17,24,.96);backdrop-filter:blur(14px);border-top:1px solid var(--border);display:flex;padding-bottom:env(safe-area-inset-bottom,0);z-index:50}
+  .bnav{position:absolute;bottom:0;left:0;right:0;height:calc(64px + env(safe-area-inset-bottom,0px));background:var(--nav-bg);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--border);display:flex;align-items:flex-start;padding-top:0;padding-bottom:env(safe-area-inset-bottom,0px);z-index:50}
   .nb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;color:var(--t3);font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:color .15s;font-family:inherit}
   .nb svg{width:22px;height:22px;stroke-width:1.8}
   .nb.on{color:var(--p)}
@@ -111,11 +120,11 @@
   .modal h2{font-size:19px;font-weight:800;margin-bottom:18px;letter-spacing:-.3px}
 
   /* TOAST */
-  .toast{position:absolute;bottom:86px;left:50%;transform:translateX(-50%) translateY(12px);background:var(--s2);border:1px solid var(--border);border-radius:100px;padding:10px 20px;font-size:14px;font-weight:600;z-index:300;opacity:0;transition:all .22s;white-space:nowrap;pointer-events:none}
+  .toast{position:absolute;bottom:calc(78px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%) translateY(12px);background:var(--s2);border:1px solid var(--border);border-radius:100px;padding:10px 20px;font-size:14px;font-weight:600;z-index:300;opacity:0;transition:all .22s;white-space:nowrap;pointer-events:none}
   .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 
   /* FAB */
-  .fab{position:absolute;bottom:82px;right:20px;width:54px;height:54px;border-radius:50%;background:var(--pd);color:#fff;font-size:26px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 24px rgba(91,79,212,.45);z-index:40;transition:transform .15s;-webkit-tap-highlight-color:transparent}
+  .fab{position:absolute;bottom:calc(74px + env(safe-area-inset-bottom,0px));right:20px;width:54px;height:54px;border-radius:50%;background:var(--pd);color:#fff;font-size:26px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 24px rgba(91,79,212,.45);z-index:40;transition:transform .15s;-webkit-tap-highlight-color:transparent}
   .fab:active{transform:scale(.91)}
 
   /* PROGRESS */
