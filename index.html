@@ -584,7 +584,7 @@ function initFB(cfg) {
 }
 
 async function onAuth(user) {
-  hide('setup'); hide('login'); hide('onboard');
+  hide('login'); hide('onboard');
   if (!user) { show('login'); return; }
   uid = user.uid;
   const doc = await uref().get();
