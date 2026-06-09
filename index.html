@@ -660,6 +660,18 @@
   </div>
 </div>
 
+<!-- TickTick Task Detail -->
+<div id="tt-detail-m" class="mwrap" onclick="mclick(event,'tt-detail-m')">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <div id="tt-detail-body"></div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn btn-g" style="flex:1" onclick="closeM('tt-detail-m')">Schließen</button>
+      <button class="btn btn-p" style="flex:2" id="tt-detail-done-btn">Erledigen ✓</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ JAVASCRIPT ════════════════════════════════════════════ -->
 <script>
 'use strict';
@@ -1544,8 +1556,8 @@ function renderTTTasks() {
     const proj = t._projectName || '';
     const dateLabel = formatTTDueDate(t.dueDate);
     const overdue = dateLabel.startsWith('⚠');
-    return `<div class="tt-task${done?' done':''}" onclick="toggleTTTask('${t.projectId}','${t.id}',this)">
-      <div class="tt-cb${done?' done':''}"></div>
+    return `<div class="tt-task${done?' done':''}" data-tid="${t.id}" onclick="openTTTaskDetail('${t.id}')">
+      <div class="tt-cb${done?' done':''}" onclick="event.stopPropagation();toggleTTTask('${t.projectId}','${t.id}',this.closest('.tt-task'))"></div>
       ${pc ? `<div class="tt-prio" style="background:${pc}"></div>` : ''}
       <div class="htext" style="flex:1;min-width:0">
         <div class="tt-title">${t.title||'–'}</div>
@@ -1560,8 +1572,8 @@ async function toggleTTTask(projectId, taskId, rowEl) {
   const t = ttTasks.find(x => x.id === taskId);
   if (!t || t.status === 2) return;
   t.status = 2;
-  rowEl.classList.add('done');
-  rowEl.querySelector('.tt-cb')?.classList.add('done');
+  rowEl?.classList.add('done');
+  rowEl?.querySelector('.tt-cb')?.classList.add('done');
   renderDaySummary();
   const ok = await ttFetch('/project/' + projectId + '/task/' + taskId + '/complete', {method: 'POST'});
   if (ok !== null) {
@@ -1569,11 +1581,52 @@ async function toggleTTTask(projectId, taskId, rowEl) {
     toast('✓ Task erledigt!');
   } else {
     t.status = 0;
-    rowEl.classList.remove('done');
-    rowEl.querySelector('.tt-cb')?.classList.remove('done');
+    rowEl?.classList.remove('done');
+    rowEl?.querySelector('.tt-cb')?.classList.remove('done');
     renderDaySummary();
     toast('Fehler beim Synchronisieren mit TickTick');
   }
+}
+
+function openTTTaskDetail(taskId) {
+  const t = ttTasks.find(x => x.id === taskId);
+  if (!t) return;
+  const pc = ttPrioColor(t.priority || 0);
+  const prioLabel = {5:'Hoch', 3:'Mittel', 1:'Niedrig'}[t.priority] || '';
+  const dateLabel = formatTTDueDate(t.dueDate);
+  const overdue = dateLabel.startsWith('⚠');
+  const done = t.status === 2;
+
+  let html = `<div style="margin-bottom:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">`;
+  if (pc) html += `<span style="font-size:11px;font-weight:700;color:${pc};background:${pc}22;padding:2px 8px;border-radius:999px">${prioLabel}</span>`;
+  if (t._projectName) html += `<span class="tt-tag">${t._projectName}</span>`;
+  html += `</div>`;
+  html += `<h2 style="margin:10px 0 8px;font-size:18px;line-height:1.3${done?';text-decoration:line-through;color:var(--t2)':''}">${t.title || '–'}</h2>`;
+  if (dateLabel) html += `<div style="font-size:13px;color:${overdue?'var(--err)':'var(--t2)'};margin-bottom:12px">${dateLabel}</div>`;
+  if (t.content) {
+    html += `<div style="font-size:14px;line-height:1.6;color:var(--t1);white-space:pre-wrap;background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:12px">${t.content}</div>`;
+  }
+  if (t.items && t.items.length) {
+    html += `<div style="margin-bottom:4px;font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.05em">Unteraufgaben</div>`;
+    html += t.items.map(it => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border);font-size:14px">
+      <div style="width:14px;height:14px;border-radius:50%;border:2px solid ${it.status===2?'var(--p)':'var(--border)'};background:${it.status===2?'var(--p)':'transparent'};flex-shrink:0"></div>
+      <span style="${it.status===2?'text-decoration:line-through;color:var(--t2)':''}">${it.title||'–'}</span>
+    </div>`).join('');
+  }
+
+  document.getElementById('tt-detail-body').innerHTML = html;
+  const doneBtn = document.getElementById('tt-detail-done-btn');
+  if (done) {
+    doneBtn.style.display = 'none';
+  } else {
+    doneBtn.style.display = '';
+    doneBtn.onclick = () => {
+      const rowEl = document.querySelector(`.tt-task[data-tid="${taskId}"]`);
+      closeM('tt-detail-m');
+      toggleTTTask(t.projectId, taskId, rowEl);
+    };
+  }
+  openM('tt-detail-m');
 }
 
 function renderTTProjects() {
@@ -2010,7 +2063,7 @@ function nav(v) {
 }
 
 // ── MODAL HELPERS ───────────────────────────────────────────────────
-const MODAL_IDS = {habit:'habit-m',morning:'morning-m',evening:'evening-m',detail:'detail-m',goal:'goal-m',settings:'settings-m'};
+const MODAL_IDS = {habit:'habit-m',morning:'morning-m',evening:'evening-m',detail:'detail-m',goal:'goal-m',settings:'settings-m','tt-detail':'tt-detail-m'};
 function openM(k) {
   if(k==='settings') openM_settings();
   else document.getElementById(MODAL_IDS[k]||k).classList.add('open');
