@@ -15,12 +15,8 @@ const APP_URL = process.env.APP_URL || 'https://habitflow-2b0dd.web.app';
 exports.sendHabitReminders = onSchedule(
   { schedule: 'every 1 minutes', region: 'us-central1' },
   async () => {
-    const now      = new Date();
-    const HH       = String(now.getHours()).padStart(2, '0');
-    const MM       = String(now.getMinutes()).padStart(2, '0');
-    const timeStr  = `${HH}:${MM}`;
-    const todayStr = now.toISOString().split('T')[0];
-    const url      = APP_URL;
+    const now = new Date();
+    const url = APP_URL;
 
     const usersSnap = await db.collection('users').get();
     const sends = [];
@@ -28,12 +24,22 @@ exports.sendHabitReminders = onSchedule(
     for (const userDoc of usersSnap.docs) {
       const userRef = db.collection('users').doc(userDoc.id);
 
+      // Ortszeit des Users — Timezone aus Firestore, Fallback UTC
+      const tz = userDoc.data().timezone || 'UTC';
+      const localTimeStr = now.toLocaleTimeString('en-GB', {
+        timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false
+      }).slice(0, 5); // "HH:MM"
+      // "Heute" in der Ortszeit des Users
+      const localTodayStr = now.toLocaleDateString('en-CA', { timeZone: tz }); // "YYYY-MM-DD"
+
+      // Habits, die genau jetzt (Ortszeit) Erinnerung haben
       const habitsSnap = await userRef.collection('habits')
-        .where('notifyAt', '==', timeStr).get();
+        .where('notifyAt', '==', localTimeStr).get();
       if (habitsSnap.empty) continue;
 
+      // Bereits erledigte Habits heute (in Ortszeit)
       const compSnap = await userRef.collection('completions')
-        .where('date', '==', todayStr).where('completed', '==', true).get();
+        .where('date', '==', localTodayStr).where('completed', '==', true).get();
       const doneIds = new Set(compSnap.docs.map(d => d.data().habitId));
 
       const tokensSnap = await userRef.collection('fcmTokens').get();
@@ -58,7 +64,7 @@ exports.sendHabitReminders = onSchedule(
               data: { habitId: habitDoc.id, url },
               webpush: {
                 notification: {
-                  icon: `${url}/icon-192.png`,
+                  icon:  `${url}/icon-192.png`,
                   badge: `${url}/icon-192.png`,
                   requireInteraction: false,
                   vibrate: [200, 100, 200]

@@ -823,6 +823,8 @@ async function startApp() {
   setDateHeader();
   buildIconGrid();
   await registerSW();
+  // Zeitzone speichern, damit Cloud Function korrekte Ortszeit rechnen kann
+  uref().set({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }, { merge: true }).catch(()=>{});
   await Promise.all([loadHabits(), loadToday(), loadGoals()]);
   checkMissBanner();
   initTickTick();
@@ -1990,6 +1992,11 @@ async function setupFCMPush() {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
         ua: navigator.userAgent.slice(0, 200)
       });
+      localStorage.setItem('hf_fcm_ok', '1');
+      console.log('FCM token OK:', token.slice(0, 20) + '…');
+    } else {
+      localStorage.removeItem('hf_fcm_ok');
+      console.warn('FCM: kein Token erhalten');
     }
     if (!fcmListenerSet) {
       messaging.onMessage(payload => {
@@ -1998,9 +2005,29 @@ async function setupFCMPush() {
       });
       fcmListenerSet = true;
     }
+    renderNotifSettings();
   } catch(e) {
+    localStorage.removeItem('hf_fcm_ok');
     console.warn('FCM setup error:', e.message);
+    renderNotifSettings();
   }
+}
+
+async function diagnosePush() {
+  const lines = [];
+  lines.push(`Browser: ${navigator.userAgent.slice(0,60)}`);
+  lines.push(`Protokoll: ${location.protocol} ${location.protocol !== 'https:' && location.hostname !== 'localhost' ? '⚠ kein HTTPS!' : '✓'}`);
+  lines.push(`SW: ${'serviceWorker' in navigator ? '✓' : '✗ nicht unterstützt'}`);
+  lines.push(`Push-API: ${'PushManager' in window ? '✓' : '✗ nicht unterstützt'}`);
+  lines.push(`Notification: ${Notification.permission}`);
+  lines.push(`FCM-Messaging: ${messaging ? '✓' : '✗'}`);
+  if ('serviceWorker' in navigator) {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    lines.push(`SW-Registrierungen: ${regs.length} (${regs.map(r=>r.scope).join(', ')})`);
+  }
+  const fcmOk = localStorage.getItem('hf_fcm_ok');
+  lines.push(`FCM-Token: ${fcmOk ? '✓ vorhanden' : '✗ fehlt — Berechtigung erteilt und Seite neu geladen?'}`);
+  alert(lines.join('\n'));
 }
 
 async function scheduleNotifications() {
@@ -2030,13 +2057,28 @@ async function sendTestNotif() {
 
 function renderNotifSettings() {
   const el = document.getElementById('notif-status');
-  if (!el || !('Notification' in window)) return;
+  if (!el) return;
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+    el.innerHTML = `<span style="color:var(--err)">Dieser Browser unterstützt keine Benachrichtigungen</span>`;
+    return;
+  }
   const perm = Notification.permission;
+  const fcmOk = !!localStorage.getItem('hf_fcm_ok');
+  const isBrave = navigator.brave?.isBrave;
   if (perm === 'granted') {
-    el.innerHTML = `<span style="color:var(--ok)">✓ Benachrichtigungen aktiv</span>
-      <button class="btn btn-g btn-sm" onclick="sendTestNotif()">Test senden</button>`;
+    el.innerHTML = `
+      <span style="color:var(--ok)">✓ Berechtigung erteilt</span>
+      <span style="color:${fcmOk?'var(--ok)':'var(--warn)'}">
+        ${fcmOk ? '✓ Push-Token registriert' : '⚠ Push-Token fehlt noch'}
+      </span>
+      ${isBrave ? `<span style="font-size:12px;color:var(--t2)">Brave: brave://settings/privacy → "Google-Dienste für Push" aktivieren</span>` : ''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-g btn-sm" onclick="sendTestNotif()">Test senden</button>
+        <button class="btn btn-g btn-sm" onclick="setupFCMPush()">Token erneuern</button>
+        <button class="btn btn-g btn-sm" onclick="diagnosePush()">Diagnose</button>
+      </div>`;
   } else if (perm === 'denied') {
-    el.innerHTML = `<span style="color:var(--err)">Blockiert — bitte in Browser-Einstellungen erlauben</span>`;
+    el.innerHTML = `<span style="color:var(--err)">Blockiert — bitte in den Browser-Einstellungen erlauben, dann Seite neu laden</span>`;
   } else {
     el.innerHTML = `<button class="btn btn-p btn-sm" onclick="requestNotifPerm()">🔔 Benachrichtigungen aktivieren</button>`;
   }
