@@ -1000,6 +1000,12 @@ async function loadCalendarEvents() {
       return;
     }
     const data = await r.json();
+    if (!r.ok) {
+      const msg = data?.error?.message || `API-Fehler ${r.status}`;
+      renderCalendarApiError(msg, r.status);
+      if (btn) btn.innerHTML = '⟳';
+      return;
+    }
     renderCalendar(data.items || []);
   } catch(e) {
     renderCalendarError();
@@ -1012,6 +1018,7 @@ function refreshCalendar() { loadCalendarEvents(); }
 function connectCalendar() {
   const provider = new firebase.auth.GoogleAuthProvider();
   provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
+  provider.setCustomParameters({ prompt: 'consent' });
   auth.signInWithPopup(provider).then(result => {
     const token = result.credential?.accessToken;
     if (token) {
@@ -1019,7 +1026,7 @@ function connectCalendar() {
       loadCalendarEvents();
       toast('✅ Kalender verbunden!');
     } else {
-      toast('Kein Kalender-Token erhalten');
+      toast('Kein Token erhalten — bitte nochmals versuchen');
     }
   }).catch(e => toast(e.message));
 }
@@ -1204,6 +1211,30 @@ function renderCalendarError() {
         Bitte überprüfe deine Internetverbindung und versuche es erneut.
       </div>
       <button class="btn btn-g" onclick="loadCalendarEvents()">Erneut versuchen</button>
+    </div>`;
+}
+
+function renderCalendarApiError(msg, status) {
+  const el = document.getElementById('cal-content');
+  if (!el) return;
+  const is403 = status === 403;
+  const hint = is403
+    ? `<div style="font-size:12px;color:var(--t2);margin-top:12px;padding:10px;background:var(--s2);border-radius:var(--rs);text-align:left;line-height:1.6">
+        <strong>So beheben:</strong><br>
+        1. <a href="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com" target="_blank" style="color:var(--p)">Google Calendar API aktivieren</a> im Cloud Console<br>
+        2. Danach "Erneut verbinden" tippen
+       </div>`
+    : '';
+  el.innerHTML = `
+    <div style="padding:44px 24px;text-align:center">
+      <div style="font-size:52px;margin-bottom:16px">🔒</div>
+      <div style="font-size:20px;font-weight:800;margin-bottom:10px">Zugriff verweigert (${status})</div>
+      <div style="font-size:13px;color:var(--err);line-height:1.5;margin-bottom:8px;word-break:break-word">${msg}</div>
+      ${hint}
+      <div style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-p btn-sm" onclick="connectCalendar()">Erneut verbinden</button>
+        <button class="btn btn-g btn-sm" onclick="loadCalendarEvents()">Neu laden</button>
+      </div>
     </div>`;
 }
 
