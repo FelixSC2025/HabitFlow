@@ -536,6 +536,16 @@
       <button class="btn btn-p" style="flex:1" onclick="saveSettings()">Speichern</button>
     </div>
     <div class="sitem">
+      <div>
+        <div class="sitem-label">Cloud-Sync erzwingen</div>
+        <div class="sitem-sub">Lokale Daten manuell nach Firestore übertragen</div>
+      </div>
+      <button class="btn btn-g btn-sm" onclick="forceSyncAll()">Sync</button>
+    </div>
+    <div class="sitem" id="debug-info" style="display:none">
+      <div style="font-size:11px;color:var(--t2);font-family:monospace;word-break:break-all" id="debug-text"></div>
+    </div>
+    <div class="sitem">
       <div><div class="sitem-label">Abmelden</div></div>
       <button class="btn btn-d btn-sm" onclick="signOut()">Abmelden</button>
     </div>
@@ -607,10 +617,15 @@ async function onAuth(user) {
   hide('login'); hide('onboard');
   if (!user) { show('login'); return; }
   uid = user.uid;
-  const doc = await uref().get();
-  if (!doc.exists || !doc.data().onboardingCompleted) {
-    startOB();
-  } else {
+  try {
+    const doc = await uref().get();
+    if (!doc.exists || !doc.data().onboardingCompleted) {
+      startOB();
+    } else {
+      startApp();
+    }
+  } catch(e) {
+    toast('⚠️ Firestore-Fehler: ' + e.message);
     startApp();
   }
 }
@@ -679,10 +694,10 @@ async function startApp() {
 function setDateHeader() {
   const d = TODAY;
   document.getElementById('datestr').textContent = `${DAYS[d.getDay()]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-  let g = HOUR < 5 ? 'Gute Nacht 🌙' : HOUR < 12 ? 'Guten Morgen! 🌅' : HOUR < 17 ? 'Guten Tag! ☀️' : HOUR < 21 ? 'Guten Abend! 🌆' : 'Gute Nacht 🌙';
+  let g = HR < 5 ? 'Gute Nacht 🌙' : HR < 12 ? 'Guten Morgen! 🌅' : HR < 17 ? 'Guten Tag! ☀️' : HR < 21 ? 'Guten Abend! 🌆' : 'Gute Nacht 🌙';
   document.getElementById('greeting').textContent = g;
-  if (HOUR >= 5 && HOUR < 11) document.getElementById('morning-card').style.display = 'block';
-  if (HOUR >= 18)             document.getElementById('evening-card').style.display = 'block';
+  if (HR >= 5 && HR < 11) document.getElementById('morning-card').style.display = 'block';
+  if (HR >= 18)           document.getElementById('evening-card').style.display = 'block';
 }
 
 function buildIconGrid() {
@@ -693,24 +708,48 @@ function buildIconGrid() {
 }
 
 // ── DATA ───────────────────────────────────────────────────────────
+async function syncToCloud(items, collRef) {
+  for (const item of items) {
+    const {id, createdAt, ...data} = item;
+    data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+    try { await collRef.doc(id).set(data); } catch(e) {}
+  }
+}
+
 async function loadHabits() {
   const cached = loadLocal('habits');
-  if (cached) { habits = cached; renderAll(); }
-  const s = await href().orderBy('createdAt','asc').get().catch(e => { toast('Fehler beim Laden: ' + e.message); return null; });
+  if (cached && cached.length) { habits = cached; renderAll(); }
+  const s = await href().orderBy('createdAt','asc').get().catch(e => { toast('Fehler: ' + e.message); return null; });
   if (!s) return;
-  habits = s.docs.map(d=>({id:d.id,...d.data()}));
-  saveLocal('habits', habits);
-  renderAll();
+  const remote = s.docs.map(d=>({id:d.id,...d.data()}));
+  if (remote.length === 0 && cached && cached.length > 0) {
+    toast('⏫ Übertrage lokale Daten in die Cloud...');
+    await syncToCloud(cached, href());
+    const s2 = await href().orderBy('createdAt','asc').get().catch(() => null);
+    if (s2) { habits = s2.docs.map(d=>({id:d.id,...d.data()})); saveLocal('habits', habits); renderAll(); }
+    toast('✅ Cloud-Sync abgeschlossen!');
+  } else {
+    habits = remote;
+    saveLocal('habits', habits);
+    renderAll();
+  }
 }
 
 async function loadGoals() {
   const cached = loadLocal('goals');
-  if (cached) { goals = cached; renderGoals(); }
-  const s = await gref().orderBy('createdAt','asc').get().catch(e => null);
+  if (cached && cached.length) { goals = cached; renderGoals(); }
+  const s = await gref().orderBy('createdAt','asc').get().catch(() => null);
   if (!s) return;
-  goals = s.docs.map(d=>({id:d.id,...d.data()}));
-  saveLocal('goals', goals);
-  renderGoals();
+  const remote = s.docs.map(d=>({id:d.id,...d.data()}));
+  if (remote.length === 0 && cached && cached.length > 0) {
+    await syncToCloud(cached, gref());
+    const s2 = await gref().orderBy('createdAt','asc').get().catch(() => null);
+    if (s2) { goals = s2.docs.map(d=>({id:d.id,...d.data()})); saveLocal('goals', goals); renderGoals(); }
+  } else {
+    goals = remote;
+    saveLocal('goals', goals);
+    renderGoals();
+  }
 }
 
 async function loadToday() {
@@ -907,9 +946,12 @@ async function saveHabit() {
 
   // Habit limit
   if (!editId) {
-    const udoc = await uref().get();
-    const since = udoc.data().createdAt?.toDate() ? (TODAY - udoc.data().createdAt.toDate())/86400000 : 0;
-    const limit = since < 30 ? 3 : 6;
+    let limit = habits.length < 3 ? 3 : 6;
+    try {
+      const udoc = await uref().get();
+      const since = udoc.data().createdAt?.toDate() ? (TODAY - udoc.data().createdAt.toDate())/86400000 : 0;
+      limit = since < 30 ? 3 : 6;
+    } catch(e) { /* Fallback to default limit if read fails */ }
     if (habits.length >= limit) { toast(`Max. ${limit} Gewohnheiten — Qualität vor Quantität!`); return; }
   }
 
@@ -1054,10 +1096,30 @@ function buildLocalSuggestion(q) {
 }
 
 // ── SETTINGS ─────────────────────────────────────────────────────────
-function openM_settings() {
+async function openM_settings() {
   const k = localStorage.getItem('hf_claude')||'';
   document.getElementById('claude-key').value=k;
   document.getElementById('settings-m').classList.add('open');
+  // Debug-Info
+  const lh = loadLocal('habits')||[]; const lg = loadLocal('goals')||[];
+  let fh=0, fg=0;
+  try { const s=await href().get(); fh=s.size; } catch(e){}
+  try { const s=await gref().get(); fg=s.size; } catch(e){}
+  const di = document.getElementById('debug-info');
+  document.getElementById('debug-text').textContent =
+    `UID: ${uid||'?'} | Lokal: ${lh.length} Habits, ${lg.length} Ziele | Firestore: ${fh} Habits, ${fg} Ziele`;
+  di.style.display='flex';
+}
+
+async function forceSyncAll() {
+  const lh = loadLocal('habits')||[], lg = loadLocal('goals')||[];
+  if (!lh.length && !lg.length) { toast('Keine lokalen Daten zum Übertragen'); return; }
+  toast('⏫ Übertrage alle lokalen Daten...');
+  await syncToCloud(lh, href());
+  await syncToCloud(lg, gref());
+  await Promise.all([loadHabits(), loadGoals()]);
+  toast('✅ Sync abgeschlossen!');
+  openM_settings();
 }
 
 function saveSettings() {
