@@ -237,6 +237,21 @@
   .day-dot{width:6px;height:6px;border-radius:50%;background:var(--p)}
   .cal-spin{display:inline-block;animation:calSpin .8s linear infinite}
   @keyframes calSpin{to{transform:rotate(360deg)}}
+
+  /* TICKTICK TASKS */
+  .tt-task{display:flex;align-items:center;padding:12px 16px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);margin:0 16px 8px;gap:12px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s}
+  .tt-task:active{background:var(--s2)}
+  .tt-task.done .tt-title{opacity:.4;text-decoration:line-through}
+  .tt-cb{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s}
+  .tt-cb.done{background:var(--ok);border-color:var(--ok)}
+  .tt-cb.done::after{content:'';width:8px;height:5px;border-left:2px solid #000;border-bottom:2px solid #000;transform:rotate(-45deg) translateY(-1px)}
+  .tt-prio{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-left:-4px}
+  .tt-title{font-size:15px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tt-tag{font-size:11px;color:var(--t2);background:var(--s2);border-radius:100px;padding:2px 8px;white-space:nowrap;flex-shrink:0}
+  /* DAY SUMMARY CARD */
+  .sum-card{margin:0 16px 8px;padding:10px 14px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);display:flex;align-items:center;gap:4px;font-size:13px;color:var(--t2);flex-wrap:wrap}
+  .sum-item{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-weight:600}
+  .sum-sep{color:var(--t3);padding:0 4px}
   </style>
 </head>
 <body>
@@ -301,6 +316,7 @@
         </div>
         <div class="pbar"><div class="pfill" id="prog-fill" style="width:0%"></div></div>
       </div>
+      <div id="day-summary" class="sum-card" style="display:none"></div>
       <div id="miss-banner" class="miss" style="display:none">
         <strong>🔄 Nicht zweimal aussetzen.</strong><br>
         Gestern hattest du einen freien Tag — okay. Heute wieder dabei!
@@ -317,6 +333,7 @@
       </div>
       <div class="sec">HEUTE</div>
       <div id="today-list"></div>
+      <div id="tt-today-section"></div>
       <!-- AI COACH -->
       <div class="sec">KI-COACH</div>
       <div class="coach">
@@ -362,7 +379,7 @@
   <!-- GOALS VIEW -->
   <div id="vg" class="view">
     <div class="hdr"><h1>Ziele</h1></div>
-    <div class="scroll"><div id="goals-list"></div></div>
+    <div class="scroll"><div id="goals-list"></div><div id="tt-projects-section"></div></div>
     <button class="fab" onclick="openM('goal')">+</button>
     <nav class="bnav">
       <button class="nb" onclick="nav('t')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Heute</button>
@@ -575,6 +592,23 @@
     <div style="display:flex;gap:10px;margin-bottom:16px">
       <button class="btn btn-p" style="flex:1" onclick="saveSettings()">Speichern</button>
     </div>
+    <div style="border-top:1px solid var(--border);padding-top:16px;margin-bottom:4px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--t2);margin-bottom:12px">TickTick</div>
+      <div class="fg">
+        <label class="lbl">Client ID</label>
+        <input id="tt-cid" class="inp" placeholder="TickTick OAuth Client ID">
+      </div>
+      <div class="fg">
+        <label class="lbl">Client Secret</label>
+        <input id="tt-csec" class="inp" type="password" placeholder="Client Secret">
+        <div class="hint">Credentials aus dem <a href="https://developer.ticktick.com" target="_blank" style="color:var(--p)">TickTick Developer Portal</a>. Redirect URI: deine App-URL</div>
+      </div>
+      <div id="tt-status" style="font-size:13px;color:var(--ok);margin-bottom:10px;display:none"></div>
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <button id="tt-connect-btn" class="btn btn-g btn-sm" style="flex:1" onclick="connectTickTick()">Mit TickTick verbinden →</button>
+        <button id="tt-disconnect-btn" class="btn btn-d btn-sm" style="display:none" onclick="disconnectTT()">Trennen</button>
+      </div>
+    </div>
     <div class="sitem">
       <div>
         <div class="sitem-label">Cloud-Sync erzwingen</div>
@@ -736,6 +770,7 @@ async function startApp() {
   buildIconGrid();
   await Promise.all([loadHabits(), loadToday(), loadGoals()]);
   checkMissBanner();
+  initTickTick();
   if (localStorage.getItem('hf_cal_token')) loadCalendarEvents();
 }
 
@@ -855,7 +890,7 @@ async function updateStreak(id, done) {
 }
 
 // ── RENDER ─────────────────────────────────────────────────────────
-function renderAll() { renderToday(); renderHabits(); }
+function renderAll() { renderToday(); renderHabits(); renderDaySummary(); }
 
 function renderToday() {
   const vis = habits.filter(h => {
@@ -1160,6 +1195,8 @@ function renderCalendar(events) {
 
   // ── Sektion A: Heute ──────────────────────────────────────────
   const todayEvs = events.filter(ev => (ev.start.dateTime || ev.start.date || '').startsWith(TD));
+  calTodayCount = todayEvs.length;
+  renderDaySummary();
   let html = `<div class="sec">HEUTE</div>`;
 
   if (!todayEvs.length) {
@@ -1276,6 +1313,255 @@ function renderCalendarApiError(msg, status) {
         <button class="btn btn-g btn-sm" onclick="loadCalendarEvents()">Neu laden</button>
       </div>
     </div>`;
+}
+
+// ── TICKTICK ──────────────────────────────────────────────────────────
+let ttTasks = [], ttProjects = [], ttProjectData = [], calTodayCount = 0;
+const TT_BASE = 'https://api.ticktick.com/open/v1';
+
+function ttCreds() {
+  return { cid: localStorage.getItem('hf_tt_cid')||'', csec: localStorage.getItem('hf_tt_csec')||'' };
+}
+
+async function handleTTCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  if (!code || sessionStorage.getItem('hf_tt_cb')) return;
+  sessionStorage.setItem('hf_tt_cb', '1');
+  const { cid, csec } = ttCreds();
+  if (!cid || !csec) { history.replaceState({}, '', location.pathname); return; }
+  try {
+    const r = await fetch('https://ticktick.com/oauth/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + btoa(cid + ':' + csec)
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code', code,
+        redirect_uri: location.origin + location.pathname
+      })
+    });
+    const d = await r.json();
+    if (d.access_token) {
+      localStorage.setItem('hf_tt_token', d.access_token);
+      if (d.refresh_token) localStorage.setItem('hf_tt_refresh', d.refresh_token);
+      if (d.expires_in) localStorage.setItem('hf_tt_expiry', Date.now() + d.expires_in * 1000);
+    }
+  } catch(e) {}
+  history.replaceState({}, '', location.pathname);
+}
+
+async function ttRefresh() {
+  const refresh = localStorage.getItem('hf_tt_refresh');
+  if (!refresh) return false;
+  const { cid, csec } = ttCreds();
+  if (!cid || !csec) return false;
+  try {
+    const r = await fetch('https://ticktick.com/oauth/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + btoa(cid + ':' + csec)
+      },
+      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refresh })
+    });
+    const d = await r.json();
+    if (d.access_token) {
+      localStorage.setItem('hf_tt_token', d.access_token);
+      if (d.refresh_token) localStorage.setItem('hf_tt_refresh', d.refresh_token);
+      if (d.expires_in) localStorage.setItem('hf_tt_expiry', Date.now() + d.expires_in * 1000);
+      return true;
+    }
+    return false;
+  } catch(e) { return false; }
+}
+
+async function ttFetch(path, opts = {}) {
+  let token = localStorage.getItem('hf_tt_token');
+  if (!token) return null;
+  const run = tk => fetch(TT_BASE + path, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + tk, 'Content-Type': 'application/json', ...(opts.headers||{}) }
+  }).catch(() => null);
+  let r = await run(token);
+  if (!r) return null;
+  if (r.status === 401) {
+    if (!await ttRefresh()) { disconnectTT(true); return null; }
+    r = await run(localStorage.getItem('hf_tt_token'));
+    if (!r) return null;
+  }
+  if (!r.ok) return null;
+  return r.json().catch(() => null);
+}
+
+function connectTickTick() {
+  saveTTCreds();
+  const { cid } = ttCreds();
+  if (!cid) { toast('Bitte Client ID eingeben'); return; }
+  location.href = 'https://ticktick.com/oauth/authorize?' + new URLSearchParams({
+    client_id: cid, scope: 'tasks:read tasks:write',
+    response_type: 'code', redirect_uri: location.origin + location.pathname
+  });
+}
+
+function saveTTCreds() {
+  const cid = document.getElementById('tt-cid')?.value.trim();
+  const csec = document.getElementById('tt-csec')?.value.trim();
+  if (cid) localStorage.setItem('hf_tt_cid', cid);
+  if (csec) localStorage.setItem('hf_tt_csec', csec);
+}
+
+function disconnectTT(silent) {
+  ['hf_tt_token','hf_tt_refresh','hf_tt_expiry'].forEach(k => localStorage.removeItem(k));
+  ttTasks = []; ttProjects = []; ttProjectData = [];
+  renderTTTasks(); renderTTProjects(); renderDaySummary(); updateTTSettingsUI();
+  if (!silent) toast('TickTick getrennt');
+}
+
+async function loadTTData() {
+  const projRaw = await ttFetch('/project');
+  if (!projRaw) { renderTTTasks(); renderTTProjects(); return; }
+  ttProjects = Array.isArray(projRaw) ? projRaw : [];
+
+  ttProjectData = await Promise.all(
+    ttProjects.slice(0, 15).map(async p => {
+      const d = await ttFetch('/project/' + p.id + '/data');
+      return { project: p, tasks: (d?.tasks || []).map(t => ({...t, _projectName: p.name})) };
+    })
+  );
+
+  ttTasks = ttProjectData.flatMap(r => r.tasks).filter(t => t.dueDate && t.dueDate.startsWith(TD));
+  renderTTTasks(); renderTTProjects(); renderDaySummary();
+}
+
+function ttPrioColor(p) {
+  if (p === 5) return 'var(--err)';
+  if (p === 3) return 'var(--warn)';
+  if (p === 1) return 'var(--p)';
+  return '';
+}
+
+function renderTTTasks() {
+  const sec = document.getElementById('tt-today-section');
+  if (!sec) return;
+  if (!localStorage.getItem('hf_tt_token')) {
+    sec.innerHTML = `<div style="margin:0 16px 10px;padding:11px 14px;background:var(--s2);border-radius:var(--r);font-size:13px;color:var(--t2);display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <span>📋 TickTick-Tasks einbinden?</span>
+      <button onclick="openM('settings')" style="background:none;border:none;color:var(--p);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit">Verbinden →</button>
+    </div>`;
+    return;
+  }
+  if (!ttTasks.length) {
+    sec.innerHTML = `<div class="sec">HEUTE ZU ERLEDIGEN</div>
+    <div style="margin:0 16px 12px;font-size:13px;color:var(--t2);text-align:center;padding:8px">Keine Tasks heute fällig 🎉</div>`;
+    return;
+  }
+  const sorted = [...ttTasks].sort((a, b) => (b.priority||0) - (a.priority||0));
+  sec.innerHTML = '<div class="sec">HEUTE ZU ERLEDIGEN</div>' + sorted.map(t => {
+    const done = t.status === 2;
+    const pc = ttPrioColor(t.priority||0);
+    const proj = t._projectName || (ttProjects.find(p => p.id === t.projectId)?.name || '');
+    return `<div class="tt-task${done?' done':''}" onclick="toggleTTTask('${t.projectId}','${t.id}',this)">
+      <div class="tt-cb${done?' done':''}"></div>
+      ${pc ? `<div class="tt-prio" style="background:${pc}"></div>` : ''}
+      <div class="tt-title">${t.title||'–'}</div>
+      ${proj ? `<span class="tt-tag">${proj}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function toggleTTTask(projectId, taskId, rowEl) {
+  const t = ttTasks.find(x => x.id === taskId);
+  if (!t || t.status === 2) return;
+  t.status = 2;
+  rowEl.classList.add('done');
+  rowEl.querySelector('.tt-cb')?.classList.add('done');
+  renderDaySummary();
+  await ttFetch('/project/' + projectId + '/task/' + taskId + '/complete', {method: 'POST'});
+}
+
+function renderTTProjects() {
+  const sec = document.getElementById('tt-projects-section');
+  if (!sec) return;
+  if (!localStorage.getItem('hf_tt_token')) { sec.innerHTML = ''; return; }
+  if (!ttProjectData.length) {
+    sec.innerHTML = `<div class="sec">TICKTICK PROJEKTE</div>
+    <div style="padding:12px 20px;font-size:13px;color:var(--t2)">Lade Projekte…</div>`;
+    return;
+  }
+  let html = '<div class="sec">TICKTICK PROJEKTE</div>';
+  ttProjectData.forEach(({project, tasks}) => {
+    const open = tasks.filter(t => t.status !== 2).length;
+    const todayN = tasks.filter(t => t.dueDate && t.dueDate.startsWith(TD) && t.status !== 2).length;
+    const col = project.color || 'var(--p)';
+    const openTasks = tasks.filter(t => t.status !== 2);
+    html += `<div class="card" style="padding:14px 16px;cursor:pointer" onclick="toggleTTProject('${project.id}')">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:10px;height:10px;border-radius:50%;background:${col};flex-shrink:0"></div>
+        <div style="flex:1;font-size:15px;font-weight:600">${project.name}</div>
+        <div style="font-size:12px;color:var(--t2)">${open} offen${todayN > 0 ? ` · <strong style="color:var(--p)">${todayN} heute</strong>` : ''}</div>
+      </div>
+      <div id="tt-pt-${project.id}" style="display:none;margin-top:10px">
+        ${openTasks.slice(0, 8).map(t => `<div style="padding:6px 0;border-top:1px solid var(--border);font-size:13px;display:flex;align-items:center;gap:8px">
+          <div style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:${ttPrioColor(t.priority||0)||'var(--border)'}"></div>
+          <span style="${t.dueDate&&t.dueDate.startsWith(TD)?'color:var(--p);font-weight:600':''}">${t.title||'–'}</span>
+        </div>`).join('')}
+        ${openTasks.length > 8 ? `<div style="font-size:11px;color:var(--t2);padding-top:6px">+ ${openTasks.length - 8} weitere</div>` : ''}
+      </div>
+    </div>`;
+  });
+  sec.innerHTML = html;
+}
+
+function toggleTTProject(id) {
+  const el = document.getElementById('tt-pt-' + id);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function renderDaySummary() {
+  const el = document.getElementById('day-summary');
+  if (!el) return;
+  const ttConn = !!localStorage.getItem('hf_tt_token');
+  const calConn = !!localStorage.getItem('hf_cal_token');
+  if (!ttConn && !calConn) { el.style.display = 'none'; return; }
+  const vis = habits.filter(h => {
+    if (h.timeOfDay === 'morning'   && HR >= 14) return false;
+    if (h.timeOfDay === 'evening'   && HR < 15)  return false;
+    if (h.timeOfDay === 'afternoon' && (HR < 12 || HR >= 18)) return false;
+    return true;
+  });
+  const parts = [];
+  if (ttConn) parts.push(`<span class="sum-item">📋 ${ttTasks.filter(t => t.status !== 2).length} Tasks</span>`);
+  if (calConn) parts.push(`<span class="sum-item">📅 ${calTodayCount} Termine</span>`);
+  parts.push(`<span class="sum-item">🔥 ${vis.filter(h => todayComp[h.id]).length}/${vis.length} Habits</span>`);
+  el.style.display = 'flex';
+  el.innerHTML = parts.join('<span class="sum-sep">·</span>');
+}
+
+function updateTTSettingsUI() {
+  const connected = !!localStorage.getItem('hf_tt_token');
+  const statusEl = document.getElementById('tt-status');
+  const connectBtn = document.getElementById('tt-connect-btn');
+  const disconnectBtn = document.getElementById('tt-disconnect-btn');
+  if (!statusEl) return;
+  statusEl.style.display = connected ? 'block' : 'none';
+  if (connected) statusEl.textContent = '✓ Verbunden';
+  if (connectBtn) connectBtn.style.display = connected ? 'none' : 'inline-flex';
+  if (disconnectBtn) disconnectBtn.style.display = connected ? 'inline-flex' : 'none';
+  const cidEl = document.getElementById('tt-cid');
+  if (cidEl) cidEl.value = localStorage.getItem('hf_tt_cid') || '';
+  const csecEl = document.getElementById('tt-csec');
+  if (csecEl) csecEl.value = '';
+}
+
+async function initTickTick() {
+  if (localStorage.getItem('hf_tt_token')) {
+    await loadTTData();
+  } else {
+    renderTTTasks();
+  }
+  renderDaySummary();
 }
 
 // ── HABIT CRUD ──────────────────────────────────────────────────────
@@ -1470,6 +1756,7 @@ async function openM_settings() {
   document.getElementById('debug-text').textContent =
     `UID: ${uid||'?'} | Lokal: ${lh.length} Habits, ${lg.length} Ziele | Firestore: ${fh} Habits, ${fg} Ziele`;
   di.style.display='flex';
+  updateTTSettingsUI();
 }
 
 async function forceSyncAll() {
@@ -1487,6 +1774,7 @@ function saveSettings() {
   const k = document.getElementById('claude-key').value.trim();
   if(k) localStorage.setItem('hf_claude',k);
   else  localStorage.removeItem('hf_claude');
+  saveTTCreds();
   closeM('settings-m'); toast('Gespeichert ✓');
 }
 
@@ -1503,6 +1791,7 @@ function nav(v) {
   curView=v;
   if(v==='s') renderStats();
   if(v==='c') loadCalendarEvents();
+  if(v==='g') { if(localStorage.getItem('hf_tt_token')&&!ttProjectData.length) loadTTData(); else renderTTProjects(); }
 }
 
 // ── MODAL HELPERS ───────────────────────────────────────────────────
@@ -1555,7 +1844,8 @@ function hide(id)  { document.getElementById(id).classList.add('hidden'); }
 function showEl(id){ document.getElementById(id).style.display='flex'; }
 
 // ── BOOT ─────────────────────────────────────────────────────────────
-window.addEventListener('load',()=>{
+window.addEventListener('load', async ()=>{
+  try { await handleTTCallback(); } catch(e) {}
   initFB({
     apiKey: "AIzaSyAcopCVomQKm8lh9ZlptkDfREDAlysKeFo",
     authDomain: "habitflow-2b0dd.firebaseapp.com",
