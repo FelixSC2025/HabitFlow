@@ -626,6 +626,39 @@
   </div>
 </div>
 
+<!-- Create TickTick Task -->
+<div id="tt-task-m" class="mwrap" onclick="mclick(event,'tt-task-m')">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <h2>📋 Task erstellen</h2>
+    <div class="fg">
+      <label class="lbl">Titel</label>
+      <input id="tt-new-title" class="inp" placeholder="Was soll erledigt werden?" maxlength="200">
+    </div>
+    <div class="fg">
+      <label class="lbl">Fällig am</label>
+      <input id="tt-new-date" class="inp" type="date">
+    </div>
+    <div class="fg">
+      <label class="lbl">Priorität</label>
+      <select id="tt-new-prio" class="inp">
+        <option value="0">Keine</option>
+        <option value="1">Niedrig</option>
+        <option value="3">Mittel</option>
+        <option value="5">Hoch</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label class="lbl">Projekt</label>
+      <select id="tt-new-proj" class="inp"></select>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-g" style="flex:1" onclick="closeM('tt-task-m')">Abbrechen</button>
+      <button class="btn btn-p" style="flex:2" onclick="createTTTask()">Erstellen ✓</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ JAVASCRIPT ════════════════════════════════════════════ -->
 <script>
 'use strict';
@@ -633,6 +666,7 @@
 // ── CONSTANTS ──────────────────────────────────────────────────────
 const TODAY = new Date();
 const TD = TODAY.toISOString().split('T')[0];
+const TDLocal = TODAY.getFullYear() + '-' + String(TODAY.getMonth()+1).padStart(2,'0') + '-' + String(TODAY.getDate()).padStart(2,'0');
 const HR = TODAY.getHours();
 const DAYS = ['So','Mo','Di','Mi','Do','Fr','Sa'];
 const MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
@@ -1392,7 +1426,9 @@ async function ttFetch(path, opts = {}) {
     if (!r) return null;
   }
   if (!r.ok) return null;
-  return r.json().catch(() => null);
+  const text = await r.text().catch(() => '');
+  if (!text.trim()) return true;
+  try { return JSON.parse(text); } catch(e) { return true; }
 }
 
 function connectTickTick() {
@@ -1427,11 +1463,15 @@ async function loadTTData() {
   ttProjectData = await Promise.all(
     ttProjects.slice(0, 15).map(async p => {
       const d = await ttFetch('/project/' + p.id + '/data');
-      return { project: p, tasks: (d?.tasks || []).map(t => ({...t, _projectName: p.name})) };
+      return { project: p, tasks: (d?.tasks || []).map(t => ({...t, _projectName: p.name, projectId: t.projectId || p.id})) };
     })
   );
 
-  ttTasks = ttProjectData.flatMap(r => r.tasks).filter(t => t.dueDate && t.dueDate.startsWith(TD));
+  ttTasks = ttProjectData.flatMap(r => r.tasks).filter(t => {
+    if (!t.dueDate) return false;
+    const taskDate = ttLocalDate(t.dueDate);
+    return taskDate !== null && taskDate <= TDLocal; // today + overdue
+  });
   renderTTTasks(); renderTTProjects(); renderDaySummary();
 }
 
@@ -1440,6 +1480,31 @@ function ttPrioColor(p) {
   if (p === 3) return 'var(--warn)';
   if (p === 1) return 'var(--p)';
   return '';
+}
+
+function ttLocalDate(dueDate) {
+  if (!dueDate) return null;
+  try {
+    const d = new Date(dueDate);
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  } catch(e) { return (dueDate+'').slice(0, 10); }
+}
+
+function formatTTDueDate(dueDate) {
+  if (!dueDate) return '';
+  const ld = ttLocalDate(dueDate);
+  if (!ld) return '';
+  if (ld === TDLocal) {
+    try {
+      const d = new Date(dueDate);
+      const h = d.getHours(), m = d.getMinutes();
+      if (h > 0 || m > 0) return 'Heute · ' + String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+    } catch(e) {}
+    return '';
+  }
+  const dayD = new Date(ld + 'T12:00:00');
+  const label = DAYS[dayD.getDay()] + ', ' + dayD.getDate() + '. ' + MONTHS[dayD.getMonth()].slice(0,3) + '.';
+  return ld < TDLocal ? '⚠ ' + label : label;
 }
 
 function renderTTTasks() {
@@ -1452,20 +1517,27 @@ function renderTTTasks() {
     </div>`;
     return;
   }
+  const hdr = `<div class="sec" style="display:flex;align-items:center;padding-right:16px"><span style="flex:1">HEUTE ZU ERLEDIGEN</span><button onclick="openCreateTTTask()" style="background:none;border:none;color:var(--p);font-size:22px;line-height:1;cursor:pointer;padding:0;font-weight:300">+</button></div>`;
   if (!ttTasks.length) {
-    sec.innerHTML = `<div class="sec">HEUTE ZU ERLEDIGEN</div>
-    <div style="margin:0 16px 12px;font-size:13px;color:var(--t2);text-align:center;padding:8px">Keine Tasks heute fällig 🎉</div>`;
+    sec.innerHTML = hdr + `<div style="margin:0 16px 12px;font-size:13px;color:var(--t2);text-align:center;padding:8px">Keine Tasks heute fällig 🎉</div>`;
     return;
   }
-  const sorted = [...ttTasks].sort((a, b) => (b.priority||0) - (a.priority||0));
-  sec.innerHTML = '<div class="sec">HEUTE ZU ERLEDIGEN</div>' + sorted.map(t => {
+  const open = ttTasks.filter(t => t.status !== 2);
+  const done_ = ttTasks.filter(t => t.status === 2);
+  const sorted = [...open.sort((a,b) => (b.priority||0)-(a.priority||0)), ...done_];
+  sec.innerHTML = hdr + sorted.map(t => {
     const done = t.status === 2;
     const pc = ttPrioColor(t.priority||0);
-    const proj = t._projectName || (ttProjects.find(p => p.id === t.projectId)?.name || '');
+    const proj = t._projectName || '';
+    const dateLabel = formatTTDueDate(t.dueDate);
+    const overdue = dateLabel.startsWith('⚠');
     return `<div class="tt-task${done?' done':''}" onclick="toggleTTTask('${t.projectId}','${t.id}',this)">
       <div class="tt-cb${done?' done':''}"></div>
       ${pc ? `<div class="tt-prio" style="background:${pc}"></div>` : ''}
-      <div class="tt-title">${t.title||'–'}</div>
+      <div class="htext" style="flex:1;min-width:0">
+        <div class="tt-title">${t.title||'–'}</div>
+        ${dateLabel ? `<div style="font-size:11px;margin-top:2px;color:${overdue?'var(--err)':'var(--t2)'}">${dateLabel}</div>` : ''}
+      </div>
       ${proj ? `<span class="tt-tag">${proj}</span>` : ''}
     </div>`;
   }).join('');
@@ -1478,7 +1550,17 @@ async function toggleTTTask(projectId, taskId, rowEl) {
   rowEl.classList.add('done');
   rowEl.querySelector('.tt-cb')?.classList.add('done');
   renderDaySummary();
-  await ttFetch('/project/' + projectId + '/task/' + taskId + '/complete', {method: 'POST'});
+  const ok = await ttFetch('/project/' + projectId + '/task/' + taskId + '/complete', {method: 'POST'});
+  if (ok !== null) {
+    confetti();
+    toast('✓ Task erledigt!');
+  } else {
+    t.status = 0;
+    rowEl.classList.remove('done');
+    rowEl.querySelector('.tt-cb')?.classList.remove('done');
+    renderDaySummary();
+    toast('Fehler beim Synchronisieren mit TickTick');
+  }
 }
 
 function renderTTProjects() {
@@ -1493,7 +1575,7 @@ function renderTTProjects() {
   let html = '<div class="sec">TICKTICK PROJEKTE</div>';
   ttProjectData.forEach(({project, tasks}) => {
     const open = tasks.filter(t => t.status !== 2).length;
-    const todayN = tasks.filter(t => t.dueDate && t.dueDate.startsWith(TD) && t.status !== 2).length;
+    const todayN = tasks.filter(t => t.dueDate && ttLocalDate(t.dueDate) === TDLocal && t.status !== 2).length;
     const col = project.color || 'var(--p)';
     const openTasks = tasks.filter(t => t.status !== 2);
     html += `<div class="card" style="padding:14px 16px;cursor:pointer" onclick="toggleTTProject('${project.id}')">
@@ -1505,7 +1587,7 @@ function renderTTProjects() {
       <div id="tt-pt-${project.id}" style="display:none;margin-top:10px">
         ${openTasks.slice(0, 8).map(t => `<div style="padding:6px 0;border-top:1px solid var(--border);font-size:13px;display:flex;align-items:center;gap:8px">
           <div style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:${ttPrioColor(t.priority||0)||'var(--border)'}"></div>
-          <span style="${t.dueDate&&t.dueDate.startsWith(TD)?'color:var(--p);font-weight:600':''}">${t.title||'–'}</span>
+          <span style="${t.dueDate&&ttLocalDate(t.dueDate)===TDLocal?'color:var(--p);font-weight:600':''}">${t.title||'–'}</span>
         </div>`).join('')}
         ${openTasks.length > 8 ? `<div style="font-size:11px;color:var(--t2);padding-top:6px">+ ${openTasks.length - 8} weitere</div>` : ''}
       </div>
@@ -1553,6 +1635,47 @@ function updateTTSettingsUI() {
   if (cidEl) cidEl.value = localStorage.getItem('hf_tt_cid') || '';
   const csecEl = document.getElementById('tt-csec');
   if (csecEl) csecEl.value = '';
+}
+
+function openCreateTTTask() {
+  if (!localStorage.getItem('hf_tt_token')) { openM('settings'); return; }
+  document.getElementById('tt-new-title').value = '';
+  document.getElementById('tt-new-date').value = TDLocal;
+  document.getElementById('tt-new-prio').value = '0';
+  const sel = document.getElementById('tt-new-proj');
+  sel.innerHTML = '<option value="">Kein Projekt</option>' + ttProjects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  document.getElementById('tt-task-m').classList.add('open');
+}
+
+async function createTTTask() {
+  const title = document.getElementById('tt-new-title').value.trim();
+  if (!title) { toast('Bitte Titel eingeben'); return; }
+  const date  = document.getElementById('tt-new-date').value;
+  const projId = document.getElementById('tt-new-proj').value;
+  const prio  = parseInt(document.getElementById('tt-new-prio').value);
+  const saveBtn = document.querySelector('#tt-task-m .btn-p');
+  if (saveBtn) { saveBtn.textContent = '…'; saveBtn.disabled = true; }
+
+  const body = { title, priority: prio };
+  if (projId) body.projectId = projId;
+  if (date) body.dueDate = date + 'T00:00:00+0000';
+
+  const result = await ttFetch('/task', { method: 'POST', body: JSON.stringify(body) });
+  if (saveBtn) { saveBtn.textContent = 'Erstellen ✓'; saveBtn.disabled = false; }
+
+  if (result && result.id) {
+    const taskDate = ttLocalDate(result.dueDate || body.dueDate || '');
+    if (taskDate && taskDate <= TDLocal) {
+      const proj = ttProjects.find(p => p.id === projId);
+      ttTasks.push({...result, _projectName: proj?.name || '', projectId: projId || result.projectId});
+      renderTTTasks();
+      renderDaySummary();
+    }
+    document.getElementById('tt-task-m').classList.remove('open');
+    toast('✅ Task erstellt!');
+  } else {
+    toast('Fehler beim Erstellen — bitte erneut versuchen');
+  }
 }
 
 async function initTickTick() {
