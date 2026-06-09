@@ -217,27 +217,6 @@
 
 <div id="toast" class="toast"></div>
 
-<!-- ═══ SETUP ══════════════════════════════════════════════ -->
-<div id="setup" class="fullpage">
-  <div class="app-logo">⚡</div>
-  <div class="app-name">HabitFlow</div>
-  <p class="app-tag">Füge deine Firebase-Konfiguration ein für geräteübergreifende Synchronisation.</p>
-  <div class="setup-form">
-    <div class="fg">
-      <label class="lbl">Firebase-Konfiguration (JSON)</label>
-      <textarea id="fb-inp" class="inp" style="height:130px;font-family:monospace;font-size:12px"
-        placeholder='{"apiKey":"...","authDomain":"...","projectId":"...", ...}'></textarea>
-    </div>
-    <button class="btn btn-p btn-w" onclick="applyFB()">Verbinden ↗</button>
-    <p class="setup-note">
-      Noch kein Projekt? →
-      <a href="https://console.firebase.google.com" target="_blank">Firebase Console</a> öffnen<br>
-      Neues Projekt → Web-App → Config kopieren<br>
-      Authentication → Google aktivieren<br>
-      Firestore Database erstellen (Test-Modus)
-    </p>
-  </div>
-</div>
 
 <!-- ═══ LOGIN ═══════════════════════════════════════════════ -->
 <div id="login" class="fullpage hidden">
@@ -548,10 +527,6 @@
       <button class="btn btn-p" style="flex:1" onclick="saveSettings()">Speichern</button>
     </div>
     <div class="sitem">
-      <div><div class="sitem-label">Firebase neu konfigurieren</div><div class="sitem-sub">Verbindung ändern</div></div>
-      <button class="btn btn-g btn-sm" onclick="resetFB()">Zurücksetzen</button>
-    </div>
-    <div class="sitem">
       <div><div class="sitem-label">Abmelden</div></div>
       <button class="btn btn-d btn-sm" onclick="signOut()">Abmelden</button>
     </div>
@@ -599,19 +574,13 @@ let editId = null;
 let curView = 't';
 
 // ── FIREBASE ───────────────────────────────────────────────────────
-function applyFB() {
-  const raw = document.getElementById('fb-inp').value.trim();
-  try { initFB(JSON.parse(raw)); localStorage.setItem('hf_fb', raw); }
-  catch(e) { toast('Ungültiges JSON — bitte prüfen'); }
-}
-
 function initFB(cfg) {
   try {
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     db = firebase.firestore();
     auth = firebase.auth();
     auth.onAuthStateChanged(onAuth);
-  } catch(e) { toast('Firebase-Fehler: ' + e.message); showEl('setup'); }
+  } catch(e) { toast('Firebase-Fehler: ' + e.message); }
 }
 
 async function onAuth(user) {
@@ -635,7 +604,6 @@ const dref  = () => uref().collection('daily');
 function loginGoogle() { auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(e=>toast(e.message)); }
 function loginAnon()   { auth.signInAnonymously().catch(e=>toast(e.message)); }
 function signOut()     { auth.signOut(); closeM('settings-m'); }
-function resetFB()     { localStorage.removeItem('hf_fb'); location.reload(); }
 
 // ── ONBOARDING ─────────────────────────────────────────────────────
 function startOB() {
@@ -1048,7 +1016,7 @@ function buildLocalSuggestion(q) {
 function openM_settings() {
   const k = localStorage.getItem('hf_claude')||'';
   document.getElementById('claude-key').value=k;
-  openM('settings');
+  document.getElementById('settings-m').classList.add('open');
 }
 
 function saveSettings() {
@@ -1123,9 +1091,14 @@ function showEl(id){ document.getElementById(id).style.display='flex'; }
 
 // ── BOOT ─────────────────────────────────────────────────────────────
 window.addEventListener('load',()=>{
-  const saved=localStorage.getItem('hf_fb');
-  if(saved) { try { initFB(JSON.parse(saved)); } catch(e){ showEl('setup'); } }
-  else showEl('setup');
+  initFB({
+    apiKey: "AIzaSyAcopCVomQKm8lh9ZlptkDfREDAlysKeFo",
+    authDomain: "habitflow-2b0dd.firebaseapp.com",
+    projectId: "habitflow-2b0dd",
+    storageBucket: "habitflow-2b0dd.firebasestorage.app",
+    messagingSenderId: "169155002133",
+    appId: "1:169155002133:web:f11a02fb1b93197787731c"
+  });
 });
 </script>
 </body>
