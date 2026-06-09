@@ -1419,7 +1419,17 @@ async function askCoach() {
       })
     });
     const data = await r.json();
-    resp.innerHTML = data.content?.[0]?.text?.replace(/\n/g,'<br>') || 'Fehler beim Laden.';
+    if (!r.ok) {
+      const msg = data.error?.message || `HTTP ${r.status}`;
+      resp.innerHTML = `<em style="color:#e55">API-Fehler: ${msg}</em><br><br>${buildLocalSuggestion(q)}`;
+      return;
+    }
+    const text = data.content?.[0]?.text;
+    if (!text) {
+      resp.innerHTML = `<em style="color:#e55">Unerwartete Antwort von der API.</em><br><br>${buildLocalSuggestion(q)}`;
+      return;
+    }
+    resp.innerHTML = text.replace(/\n/g,'<br>');
   } catch(e) {
     resp.innerHTML = buildLocalSuggestion(q);
   }
