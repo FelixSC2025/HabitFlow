@@ -28,6 +28,7 @@
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--t1);-webkit-font-smoothing:antialiased;overflow:hidden}
   #root{height:100vh;height:100dvh;max-width:430px;margin:0 auto;position:relative;display:flex;flex-direction:column;overflow:hidden}
+  @media(min-width:640px){#root{max-width:640px}}
 
   /* FULL-PAGE SCREENS */
   .fullpage{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:calc(32px + env(safe-area-inset-top,0px)) 24px calc(32px + env(safe-area-inset-bottom,0px));text-align:center;background:var(--bg);z-index:200;overflow-y:auto}
@@ -145,7 +146,7 @@
   .slbl{font-size:12px;color:var(--t2);margin-top:4px}
 
   /* TODAY HERO */
-  .today-hero{padding:20px 20px 12px}
+  .today-hero{padding:calc(20px + env(safe-area-inset-top,0px)) 20px 12px}
   .greeting{font-size:24px;font-weight:800;letter-spacing:-.4px}
   .today-sub{font-size:13px;color:var(--t2);margin-top:2px}
   .prog-text{display:flex;justify-content:space-between;font-size:13px;color:var(--t2);margin:14px 0 5px}
@@ -819,7 +820,7 @@ async function startApp() {
   await Promise.all([loadHabits(), loadToday(), loadGoals()]);
   checkMissBanner();
   initTickTick();
-  if (localStorage.getItem('hf_cal_token')) loadCalendarEvents();
+  if (localStorage.getItem('hf_cal_token') || localStorage.getItem('hf_cal_connected')) loadCalendarEvents();
   scheduleNotifications();
 }
 
@@ -1070,9 +1071,16 @@ async function renderStats() {
 }
 
 // ── CALENDAR ────────────────────────────────────────────────────────
-async function loadCalendarEvents() {
-  const token = localStorage.getItem('hf_cal_token');
-  if (!token) { renderCalendarNoAuth(); return; }
+async function loadCalendarEvents(tryRefresh = true) {
+  let token = localStorage.getItem('hf_cal_token');
+  if (!token) {
+    if (tryRefresh && localStorage.getItem('hf_cal_connected')) {
+      const ok = await tryRefreshCalToken();
+      if (ok) { loadCalendarEvents(false); return; }
+    }
+    renderCalendarNoAuth();
+    return;
+  }
 
   const btn = document.getElementById('cal-refresh-btn');
   if (btn) btn.innerHTML = '<span class="cal-spin">⟳</span>';
@@ -1087,6 +1095,10 @@ async function loadCalendarEvents() {
     if (listR.status === 401) {
       localStorage.removeItem('hf_cal_token');
       if (btn) btn.innerHTML = '⟳';
+      if (tryRefresh) {
+        const ok = await tryRefreshCalToken();
+        if (ok) { loadCalendarEvents(false); return; }
+      }
       renderCalendarNoAuth();
       return;
     }
@@ -1135,6 +1147,18 @@ async function loadCalendarEvents() {
 
 function refreshCalendar() { loadCalendarEvents(); }
 
+async function tryRefreshCalToken() {
+  if (!auth?.currentUser) return false;
+  try {
+    const p = new firebase.auth.GoogleAuthProvider();
+    p.addScope('https://www.googleapis.com/auth/calendar.readonly');
+    const r = await auth.signInWithPopup(p);
+    const t = r.credential?.accessToken;
+    if (t) { localStorage.setItem('hf_cal_token', t); return true; }
+  } catch(e) {}
+  return false;
+}
+
 function connectCalendar() {
   const provider = new firebase.auth.GoogleAuthProvider();
   provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
@@ -1143,6 +1167,7 @@ function connectCalendar() {
     const token = result.credential?.accessToken;
     if (token) {
       localStorage.setItem('hf_cal_token', token);
+      localStorage.setItem('hf_cal_connected', '1');
       loadCalendarEvents();
       toast('✅ Kalender verbunden!');
     } else {
