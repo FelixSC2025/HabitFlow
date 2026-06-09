@@ -219,6 +219,24 @@
   .tag{display:inline-block;padding:2px 8px;border-radius:100px;font-size:11px;font-weight:700}
   .tag-b{background:rgba(45,212,160,.12);color:var(--ok)}
   .tag-k{background:rgba(252,106,106,.12);color:var(--err)}
+
+  /* CALENDAR */
+  .cal-event{display:flex;align-items:flex-start;padding:12px 16px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);margin:0 16px 8px;gap:12px}
+  .cal-event-bar{width:3px;border-radius:2px;align-self:stretch;flex-shrink:0;background:var(--p)}
+  .cal-time{font-size:12px;color:var(--t2);min-width:60px;padding-top:2px}
+  .cal-title{font-size:15px;font-weight:600}
+  .cal-loc{font-size:12px;color:var(--t2);margin-top:2px}
+  .cal-event.past{opacity:.45}
+  .cal-event.now{border-color:var(--p);background:rgba(124,111,247,.06)}
+  .time-window{margin:0 16px 8px;padding:14px 16px;background:rgba(45,212,160,.07);border:1px solid rgba(45,212,160,.2);border-radius:var(--r)}
+  .time-window-badge{font-size:11px;font-weight:700;color:var(--ok);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px}
+  .time-window-text{font-size:14px;font-weight:600}
+  .time-window-sub{font-size:12px;color:var(--t2);margin-top:3px}
+  .day-header{padding:8px 20px 4px;font-size:12px;font-weight:700;color:var(--t2);display:flex;align-items:center;gap:8px}
+  .day-header.today .day-label{color:var(--p)}
+  .day-dot{width:6px;height:6px;border-radius:50%;background:var(--p)}
+  .cal-spin{display:inline-block;animation:calSpin .8s linear infinite}
+  @keyframes calSpin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
@@ -315,6 +333,7 @@
       <button class="nb" onclick="nav('h')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Gewohnheiten</button>
       <button class="nb" onclick="nav('g')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>Ziele</button>
       <button class="nb" onclick="nav('s')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>Statistiken</button>
+      <button class="nb" onclick="nav('c')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Kalender</button>
     </nav>
   </div>
 
@@ -336,6 +355,7 @@
       <button class="nb on" onclick="nav('h')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Gewohnheiten</button>
       <button class="nb" onclick="nav('g')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/></svg>Ziele</button>
       <button class="nb" onclick="nav('s')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>Statistiken</button>
+      <button class="nb" onclick="nav('c')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Kalender</button>
     </nav>
   </div>
 
@@ -349,6 +369,7 @@
       <button class="nb" onclick="nav('h')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/></svg>Gewohnheiten</button>
       <button class="nb on" onclick="nav('g')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>Ziele</button>
       <button class="nb" onclick="nav('s')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>Statistiken</button>
+      <button class="nb" onclick="nav('c')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Kalender</button>
     </nav>
   </div>
 
@@ -365,6 +386,25 @@
       <button class="nb" onclick="nav('h')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/></svg>Gewohnheiten</button>
       <button class="nb" onclick="nav('g')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/></svg>Ziele</button>
       <button class="nb on" onclick="nav('s')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>Statistiken</button>
+      <button class="nb" onclick="nav('c')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Kalender</button>
+    </nav>
+  </div>
+
+  <!-- CALENDAR VIEW -->
+  <div id="vc" class="view">
+    <div class="hdr">
+      <h1>Kalender</h1>
+      <button class="icon-btn" id="cal-refresh-btn" onclick="refreshCalendar()">⟳</button>
+    </div>
+    <div class="scroll">
+      <div id="cal-content"></div>
+    </div>
+    <nav class="bnav">
+      <button class="nb" onclick="nav('t')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Heute</button>
+      <button class="nb" onclick="nav('h')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/></svg>Gewohnheiten</button>
+      <button class="nb" onclick="nav('g')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/></svg>Ziele</button>
+      <button class="nb" onclick="nav('s')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>Statistiken</button>
+      <button class="nb on" onclick="nav('c')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Kalender</button>
     </nav>
   </div>
 </div>
@@ -636,7 +676,14 @@ const gref  = () => uref().collection('goals');
 const cref  = () => uref().collection('completions');
 const dref  = () => uref().collection('daily');
 
-function loginGoogle() { auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(e=>toast(e.message)); }
+function loginGoogle() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
+  auth.signInWithPopup(provider).then(result => {
+    const token = result.credential?.accessToken;
+    if (token) localStorage.setItem('hf_cal_token', token);
+  }).catch(e => toast(e.message));
+}
 function loginAnon()   { auth.signInAnonymously().catch(e=>toast(e.message)); }
 function signOut()     { auth.signOut(); closeM('settings-m'); }
 
@@ -689,6 +736,7 @@ async function startApp() {
   buildIconGrid();
   await Promise.all([loadHabits(), loadToday(), loadGoals()]);
   checkMissBanner();
+  if (localStorage.getItem('hf_cal_token')) loadCalendarEvents();
 }
 
 function setDateHeader() {
@@ -927,6 +975,238 @@ async function renderStats() {
   }).join('');
 }
 
+// ── CALENDAR ────────────────────────────────────────────────────────
+async function loadCalendarEvents() {
+  const token = localStorage.getItem('hf_cal_token');
+  if (!token) { renderCalendarNoAuth(); return; }
+
+  const btn = document.getElementById('cal-refresh-btn');
+  if (btn) btn.innerHTML = '<span class="cal-spin">⟳</span>';
+
+  const todayStart = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate(), 0, 0, 0);
+  const weekEnd    = new Date(TODAY.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  try {
+    const r = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events` +
+      `?timeMin=${todayStart.toISOString()}&timeMax=${weekEnd.toISOString()}` +
+      `&singleEvents=true&orderBy=startTime&maxResults=50`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (r.status === 401) {
+      localStorage.removeItem('hf_cal_token');
+      if (btn) btn.innerHTML = '⟳';
+      renderCalendarNoAuth();
+      return;
+    }
+    const data = await r.json();
+    renderCalendar(data.items || []);
+  } catch(e) {
+    renderCalendarError();
+  }
+  if (btn) btn.innerHTML = '⟳';
+}
+
+function refreshCalendar() { loadCalendarEvents(); }
+
+function connectCalendar() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
+  auth.signInWithPopup(provider).then(result => {
+    const token = result.credential?.accessToken;
+    if (token) {
+      localStorage.setItem('hf_cal_token', token);
+      loadCalendarEvents();
+      toast('✅ Kalender verbunden!');
+    } else {
+      toast('Kein Kalender-Token erhalten');
+    }
+  }).catch(e => toast(e.message));
+}
+
+function fmtTime(dtStr) {
+  if (!dtStr) return 'Ganztägig';
+  return new Date(dtStr).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+}
+
+function eventIsNow(ev) {
+  if (!ev.start.dateTime || !ev.end.dateTime) return false;
+  const now = new Date();
+  return now >= new Date(ev.start.dateTime) && now <= new Date(ev.end.dateTime);
+}
+
+function eventIsPast(ev) {
+  if (!ev.end.dateTime) return false;
+  return new Date(ev.end.dateTime) < new Date();
+}
+
+function findFreeWindows(events, minMinutes = 20) {
+  const dayStart = new Date(`${TD}T06:00:00`);
+  const dayEnd   = new Date(`${TD}T22:00:00`);
+
+  const slots = events
+    .filter(ev => ev.start.dateTime && ev.start.dateTime.startsWith(TD))
+    .map(ev => ({ start: new Date(ev.start.dateTime), end: new Date(ev.end.dateTime) }))
+    .filter(s => s.end > dayStart && s.start < dayEnd)
+    .sort((a, b) => a.start - b.start);
+
+  const windows = [];
+  let cursor = dayStart;
+
+  for (const slot of slots) {
+    const gapEnd = slot.start;
+    if (gapEnd > cursor) {
+      const mins = (gapEnd - cursor) / 60000;
+      if (mins >= minMinutes) windows.push({ start: new Date(cursor), end: new Date(gapEnd), duration: mins });
+    }
+    if (slot.end > cursor) cursor = slot.end;
+  }
+
+  const finalMins = (dayEnd - cursor) / 60000;
+  if (finalMins >= minMinutes) windows.push({ start: new Date(cursor), end: new Date(dayEnd), duration: finalMins });
+
+  return windows;
+}
+
+function fmtDuration(mins) {
+  if (mins < 60) return `${Math.round(mins)} Min.`;
+  const h = Math.floor(mins / 60), m = Math.round(mins % 60);
+  return m > 0 ? `${h}h ${m} Min.` : `${h}h`;
+}
+
+function matchWindowToHabits(win) {
+  const hour = win.start.getHours();
+  let timeLabel, tod;
+  if (hour >= 6 && hour < 12)       { timeLabel = 'Morgen';  tod = 'morning'; }
+  else if (hour >= 12 && hour < 17) { timeLabel = 'Mittag';  tod = 'afternoon'; }
+  else                              { timeLabel = 'Abend';   tod = 'evening'; }
+  const count = habits.filter(h => (h.timeOfDay === tod || h.timeOfDay === 'any') && !todayComp[h.id]).length;
+  return { timeLabel, count };
+}
+
+function calColor(id) {
+  const map = {'1':'#d50000','2':'#e67c73','3':'#f6bf26','4':'#f6bf26','5':'#33b679','6':'#0b8043','7':'#039be5','8':'#3f51b5','9':'#7986cb','10':'#8e24aa','11':'#616161'};
+  return map[String(id)] || 'var(--p)';
+}
+
+function renderCalendar(events) {
+  const el = document.getElementById('cal-content');
+  if (!el) return;
+
+  // ── Sektion A: Heute ──────────────────────────────────────────
+  const todayEvs = events.filter(ev => (ev.start.dateTime || ev.start.date || '').startsWith(TD));
+  let html = `<div class="sec">HEUTE</div>`;
+
+  if (!todayEvs.length) {
+    html += `<div class="empty" style="padding:28px 24px"><div class="ei">🎯</div><div class="et">Freier Tag!</div><div class="ed">Perfekt für deine Gewohnheiten.</div></div>`;
+  } else {
+    html += todayEvs.map(ev => {
+      const allDay   = !ev.start.dateTime;
+      const timeStr  = allDay ? 'Ganztägig' : fmtTime(ev.start.dateTime) + '–' + fmtTime(ev.end.dateTime);
+      const nowCls   = eventIsNow(ev) ? 'now' : '';
+      const pastCls  = eventIsPast(ev) ? 'past' : '';
+      const color    = ev.colorId ? calColor(ev.colorId) : 'var(--p)';
+      const loc      = ev.location ? `<div class="cal-loc">📍 ${ev.location.substring(0,50)}</div>` : '';
+      const nowBadge = eventIsNow(ev) ? `<span style="font-size:10px;font-weight:700;color:var(--p);text-transform:uppercase;margin-left:6px">Jetzt</span>` : '';
+      return `<div class="cal-event ${nowCls} ${pastCls}">
+        <div class="cal-event-bar" style="background:${color}"></div>
+        <div style="flex:1;min-width:0">
+          <div class="cal-time" style="min-width:0">${timeStr}${nowBadge}</div>
+          <div class="cal-title">${ev.summary || '(Kein Titel)'}</div>
+          ${loc}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Sektion B: Diese Woche ────────────────────────────────────
+  html += `<div class="sec">DIESE WOCHE</div>`;
+  const weekDays = [];
+  for (let i = 1; i <= 6; i++) {
+    const d = new Date(TODAY); d.setDate(d.getDate() + i);
+    weekDays.push(d.toISOString().split('T')[0]);
+  }
+
+  const hasWeekEvents = weekDays.some(day => events.some(ev => (ev.start.dateTime || ev.start.date || '').startsWith(day)));
+  if (!hasWeekEvents) {
+    html += `<div class="card" style="text-align:center;color:var(--t2);font-size:14px;padding:20px">Keine Termine diese Woche 🎉</div>`;
+  } else {
+    weekDays.forEach(day => {
+      const dayEvs = events.filter(ev => (ev.start.dateTime || ev.start.date || '').startsWith(day));
+      if (!dayEvs.length) return;
+      const d = new Date(day + 'T12:00:00');
+      const dayLabel = `${DAYS[d.getDay()]}, ${d.getDate()}. ${MONTHS[d.getMonth()].substring(0,3)}.`;
+      html += `<div class="day-header"><div class="day-label">${dayLabel}</div></div>`;
+      dayEvs.slice(0, 3).forEach(ev => {
+        const color   = ev.colorId ? calColor(ev.colorId) : 'var(--p)';
+        const timeStr = ev.start.dateTime ? fmtTime(ev.start.dateTime) : 'Ganztägig';
+        html += `<div class="cal-event">
+          <div class="cal-event-bar" style="background:${color}"></div>
+          <div style="flex:1;min-width:0">
+            <div class="cal-time">${timeStr}</div>
+            <div class="cal-title">${ev.summary || '(Kein Titel)'}</div>
+          </div>
+        </div>`;
+      });
+      if (dayEvs.length > 3) html += `<div style="text-align:right;padding:0 20px 6px;font-size:12px;color:var(--t2)">+ ${dayEvs.length - 3} weitere</div>`;
+    });
+  }
+
+  // ── Sektion C: Habit-Zeitfenster ──────────────────────────────
+  html += `<div class="sec">HABIT-ZEITFENSTER ⭐</div>`;
+  const windows = findFreeWindows(events);
+  if (!windows.length) {
+    html += `<div class="card" style="text-align:center;color:var(--t2);font-size:14px;padding:20px">Kein freies Fenster heute (mind. 20 Min.)</div>`;
+  } else {
+    html += windows.slice(0, 4).map(win => {
+      const start = win.start.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+      const end   = win.end.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+      const { timeLabel, count } = matchWindowToHabits(win);
+      const sub = count > 0
+        ? `${count} ${timeLabel}-Gewohnheit${count > 1 ? 'en' : ''} noch offen`
+        : `Freies Zeitfenster`;
+      return `<div class="time-window">
+        <div class="time-window-badge">Frei · ${fmtDuration(win.duration)}</div>
+        <div class="time-window-text">🕐 ${start}–${end}</div>
+        <div class="time-window-sub">${sub}</div>
+      </div>`;
+    }).join('');
+  }
+
+  html += '<div style="height:8px"></div>';
+  el.innerHTML = html;
+}
+
+function renderCalendarNoAuth() {
+  const el = document.getElementById('cal-content');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="padding:44px 24px;text-align:center">
+      <div style="font-size:52px;margin-bottom:16px">📅</div>
+      <div style="font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:10px">Kalender verbinden</div>
+      <div style="font-size:14px;color:var(--t2);line-height:1.6;margin-bottom:28px;max-width:280px;margin-left:auto;margin-right:auto">
+        Verbinde deinen Google Calendar um Termine und freie Zeitfenster für deine Habits zu sehen.
+      </div>
+      <button class="btn btn-p" style="width:100%;max-width:280px" onclick="connectCalendar()">
+        📅 Kalender verbinden
+      </button>
+    </div>`;
+}
+
+function renderCalendarError() {
+  const el = document.getElementById('cal-content');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="padding:44px 24px;text-align:center">
+      <div style="font-size:52px;margin-bottom:16px">⚠️</div>
+      <div style="font-size:20px;font-weight:800;margin-bottom:10px">Fehler beim Laden</div>
+      <div style="font-size:14px;color:var(--t2);line-height:1.6;margin-bottom:24px">
+        Bitte überprüfe deine Internetverbindung und versuche es erneut.
+      </div>
+      <button class="btn btn-g" onclick="loadCalendarEvents()">Erneut versuchen</button>
+    </div>`;
+}
+
 // ── HABIT CRUD ──────────────────────────────────────────────────────
 function openAddHabit() {
   editId=null;
@@ -1130,7 +1410,7 @@ function saveSettings() {
 }
 
 // ── NAVIGATION ─────────────────────────────────────────────────────
-const VIEW_MAP = {t:'vt', h:'vh', g:'vg', s:'vs'};
+const VIEW_MAP = {t:'vt', h:'vh', g:'vg', s:'vs', c:'vc'};
 
 function nav(v) {
   if (v===curView) return;
@@ -1141,6 +1421,7 @@ function nav(v) {
   setTimeout(()=>prev.classList.remove('prev'),320);
   curView=v;
   if(v==='s') renderStats();
+  if(v==='c') loadCalendarEvents();
 }
 
 // ── MODAL HELPERS ───────────────────────────────────────────────────
