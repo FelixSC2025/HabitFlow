@@ -457,13 +457,9 @@
       <input id="h-cue" class="inp" placeholder='z.B. "Nachdem ich Kaffee gemacht habe"' maxlength="100">
     </div>
     <div class="fg">
-      <label class="lbl">Uhrzeit</label>
-      <select id="h-time" class="inp">
-        <option value="any">Jederzeit</option>
-        <option value="morning">Morgens (6–12 Uhr)</option>
-        <option value="afternoon">Nachmittags (12–17 Uhr)</option>
-        <option value="evening">Abends (17–22 Uhr)</option>
-      </select>
+      <label class="lbl">Erinnerungszeit (optional)</label>
+      <input id="h-notify" class="inp" type="time" placeholder="HH:MM">
+      <div class="hint">Tägliche Push-Benachrichtigung zu dieser Uhrzeit.</div>
     </div>
     <div class="fg">
       <label class="lbl">Temptation Bundling (optional)</label>
@@ -584,6 +580,11 @@
   <div class="modal">
     <div class="mhandle"></div>
     <h2>⚙️ Einstellungen</h2>
+    <div style="margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--t2);margin-bottom:10px">ERINNERUNGEN</div>
+      <div id="notif-status" style="display:flex;flex-direction:column;gap:8px;font-size:13px"></div>
+    </div>
+    <div style="border-top:1px solid var(--border);margin-bottom:16px"></div>
     <div class="fg">
       <label class="lbl">Claude API Key (für KI-Coach)</label>
       <input id="claude-key" class="inp" type="password" placeholder="sk-ant-...">
@@ -802,10 +803,12 @@ async function startApp() {
   document.getElementById('app').style.display = 'flex';
   setDateHeader();
   buildIconGrid();
+  await registerSW();
   await Promise.all([loadHabits(), loadToday(), loadGoals()]);
   checkMissBanner();
   initTickTick();
   if (localStorage.getItem('hf_cal_token')) loadCalendarEvents();
+  scheduleNotifications();
 }
 
 function setDateHeader() {
@@ -897,6 +900,16 @@ async function toggle(id) {
   renderAll();
   if (now) confetti();
   await cref().doc(`${TD}_${id}`).set({ habitId:id, date:TD, completed:now, ts:firebase.firestore.FieldValue.serverTimestamp() });
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready.then(reg => {
+      if (!reg.active) return;
+      if (now) {
+        reg.active.postMessage({ type: 'CANCEL', id });
+      } else {
+        scheduleNotifications();
+      }
+    });
+  }
   await updateStreak(id, now);
 }
 
@@ -1691,8 +1704,7 @@ async function initTickTick() {
 function openAddHabit() {
   editId=null;
   document.getElementById('hm-title').textContent='Gewohnheit hinzufügen';
-  ['h-name','h-tiny','h-cue','h-bundle'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('h-time').value='any';
+  ['h-name','h-tiny','h-cue','h-bundle','h-notify'].forEach(id=>document.getElementById(id).value='');
   selType_='build'; selIcon_='📚';
   document.getElementById('tb-b').className='ttb sb';
   document.getElementById('tb-k').className='ttb';
@@ -1715,11 +1727,13 @@ async function saveHabit() {
     if (habits.length >= limit) { toast(`Max. ${limit} Gewohnheiten — Qualität vor Quantität!`); return; }
   }
 
+  const notifyAt = document.getElementById('h-notify').value.trim();
   const data = {
     name, type:selType_, icon:selIcon_,
     twoMinuteVersion: document.getElementById('h-tiny').value.trim(),
     cue:              document.getElementById('h-cue').value.trim(),
-    timeOfDay:        document.getElementById('h-time').value,
+    timeOfDay:        'any',
+    notifyAt:         notifyAt || null,
     temptationBundle: document.getElementById('h-bundle').value.trim(),
     streak:0, longestStreak:0, totalCompletions:0
   };
@@ -1740,6 +1754,7 @@ async function saveHabit() {
   saveLocal('habits', habits);
   closeM('habit'); renderAll();
   toast(editId?'✅ Aktualisiert!':'✅ Gewohnheit hinzugefügt!');
+  scheduleNotifications();
 }
 
 async function deleteHabit(id) {
@@ -1865,6 +1880,82 @@ function buildLocalSuggestion(q) {
   <em style="color:var(--t3);font-size:12px">Für KI-Antworten Claude API Key in Einstellungen (⚙️) eingeben.</em>`;
 }
 
+// ── NOTIFICATIONS ─────────────────────────────────────────────────────
+async function registerSW() {
+  if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
+  try {
+    const reg = await navigator.serviceWorker.register('./sw.js');
+    console.log('SW registered:', reg.scope);
+  } catch(e) {
+    console.warn('SW registration failed:', e);
+  }
+}
+
+async function scheduleNotifications() {
+  if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+
+  const reg = await navigator.serviceWorker.ready;
+  if (!reg.active) return;
+
+  const now = new Date();
+  const alarms = [];
+
+  habits.forEach(h => {
+    if (!h.notifyAt) return;
+    if (todayComp[h.id]) return;
+
+    const [hh, mm] = h.notifyAt.split(':').map(Number);
+    const fireDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0);
+
+    if (fireDate <= now) return;
+
+    alarms.push({
+      id: h.id,
+      title: `${h.icon || '⭐'} ${h.name}`,
+      body: h.twoMinuteVersion
+        ? `2-Min-Version: ${h.twoMinuteVersion}`
+        : (h.cue ? `Auslöser: ${h.cue}` : 'Zeit für deine Gewohnheit!'),
+      fireAt: fireDate.getTime()
+    });
+  });
+
+  reg.active.postMessage({ type: 'SCHEDULE', alarms });
+}
+
+async function requestNotifPerm() {
+  const result = await Notification.requestPermission();
+  if (result === 'granted') {
+    toast('🔔 Benachrichtigungen aktiviert!');
+    await scheduleNotifications();
+  } else {
+    toast('Benachrichtigungen verweigert');
+  }
+  renderNotifSettings();
+}
+
+function sendTestNotif() {
+  if (Notification.permission !== 'granted') return;
+  new Notification('🔥 HabitFlow Test', {
+    body: 'Benachrichtigungen funktionieren!',
+    icon: '/icon-192.png'
+  });
+}
+
+function renderNotifSettings() {
+  const el = document.getElementById('notif-status');
+  if (!el || !('Notification' in window)) return;
+  const perm = Notification.permission;
+  if (perm === 'granted') {
+    el.innerHTML = `<span style="color:var(--ok)">✓ Benachrichtigungen aktiv</span>
+      <button class="btn btn-g btn-sm" onclick="sendTestNotif()">Test senden</button>`;
+  } else if (perm === 'denied') {
+    el.innerHTML = `<span style="color:var(--err)">Blockiert — bitte in Browser-Einstellungen erlauben</span>`;
+  } else {
+    el.innerHTML = `<button class="btn btn-p btn-sm" onclick="requestNotifPerm()">🔔 Benachrichtigungen aktivieren</button>`;
+  }
+}
+
 // ── SETTINGS ─────────────────────────────────────────────────────────
 async function openM_settings() {
   const k = localStorage.getItem('hf_claude')||'';
@@ -1880,6 +1971,7 @@ async function openM_settings() {
     `UID: ${uid||'?'} | Lokal: ${lh.length} Habits, ${lg.length} Ziele | Firestore: ${fh} Habits, ${fg} Ziele`;
   di.style.display='flex';
   updateTTSettingsUI();
+  renderNotifSettings();
 }
 
 async function forceSyncAll() {
