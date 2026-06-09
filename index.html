@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>HabitFlow</title>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <style>
+  :root {
+    --bg:#08080f; --s1:#111118; --s2:#1c1c28; --s3:#252535;
+    --border:#2c2c40; --t1:#eeeef8; --t2:#7878a0; --t3:#4a4a68;
+    --p:#7c6ff7; --pd:#5b4fd4; --ok:#2dd4a0; --warn:#f0b429;
+    --err:#fc6a6a; --purple:#a855f7; --r:16px; --rs:10px;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--t1);-webkit-font-smoothing:antialiased;overflow:hidden}
+  #root{height:100vh;max-width:430px;margin:0 auto;position:relative;display:flex;flex-direction:column;overflow:hidden}
+
+  /* FULL-PAGE SCREENS */
+  .fullpage{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;text-align:center;background:var(--bg);z-index:200;overflow-y:auto}
+  .fullpage.hidden{display:none}
+
+  /* VIEWS */
+  .view{position:absolute;inset:0;display:flex;flex-direction:column;transform:translateX(100%);opacity:0;transition:transform .28s cubic-bezier(.4,0,.2,1),opacity .28s;pointer-events:none;background:var(--bg)}
+  .view.active{transform:translateX(0);opacity:1;pointer-events:all}
+  .view.prev{transform:translateX(-25%);opacity:0}
+
+  /* SCROLL */
+  .scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:88px}
+  .scroll::-webkit-scrollbar{display:none}
+
+  /* BOTTOM NAV */
+  .bnav{position:absolute;bottom:0;left:0;right:0;height:72px;background:rgba(17,17,24,.96);backdrop-filter:blur(14px);border-top:1px solid var(--border);display:flex;padding-bottom:env(safe-area-inset-bottom,0);z-index:50}
+  .nb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;color:var(--t3);font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:color .15s;font-family:inherit}
+  .nb svg{width:22px;height:22px;stroke-width:1.8}
+  .nb.on{color:var(--p)}
+
+  /* HEADER */
+  .hdr{padding:16px 20px 8px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+  .hdr h1{font-size:26px;font-weight:800;letter-spacing:-.5px}
+  .icon-btn{width:38px;height:38px;border-radius:50%;background:var(--s1);border:1px solid var(--border);color:var(--t1);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;flex-shrink:0}
+
+  /* CARDS */
+  .card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin:0 16px 10px}
+  .sec{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--t2);padding:12px 20px 6px}
+
+  /* HABIT ROW */
+  .hrow{display:flex;align-items:center;padding:14px 16px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);margin:0 16px 8px;gap:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s,transform .08s;user-select:none}
+  .hrow:active{transform:scale(.98);background:var(--s2)}
+  .hrow.done .hname{opacity:.4;text-decoration:line-through}
+
+  /* CHECK CIRCLE */
+  .cc{width:30px;height:30px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .22s cubic-bezier(.34,1.56,.64,1)}
+  .cc.on{background:var(--ok);border-color:var(--ok);box-shadow:0 0 14px rgba(45,212,160,.3)}
+  .cc.on::after{content:'';width:10px;height:6px;border-left:2.5px solid #000;border-bottom:2.5px solid #000;transform:rotate(-45deg) translateY(-1px)}
+
+  .htext{flex:1;min-width:0}
+  .hname{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hsub{font-size:12px;color:var(--t2);margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .streak-chip{display:inline-flex;align-items:center;gap:3px;background:rgba(240,180,41,.12);color:var(--warn);border-radius:100px;padding:2px 8px;font-size:11px;font-weight:700}
+
+  /* ONBOARDING */
+  .ob-cont{width:100%;display:flex;flex-direction:column;align-items:center;padding:40px 24px 24px;text-align:center}
+  .ob-emoji{font-size:56px;margin-bottom:18px}
+  .ob-title{font-size:24px;font-weight:800;letter-spacing:-.4px;margin-bottom:10px}
+  .ob-body{font-size:15px;color:var(--t2);line-height:1.6;margin-bottom:28px;max-width:320px}
+  .opt-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;margin-bottom:24px}
+  .opt-card{background:var(--s1);border:2px solid var(--border);border-radius:var(--r);padding:14px 10px;cursor:pointer;text-align:center;transition:all .15s;-webkit-tap-highlight-color:transparent}
+  .opt-card:active{transform:scale(.96)}
+  .opt-card.sel{border-color:var(--p);background:rgba(124,111,247,.1)}
+  .opt-card .oi{font-size:26px;margin-bottom:5px}
+  .opt-card .ol{font-size:13px;font-weight:700}
+  .opt-card .od{font-size:11px;color:var(--t2);margin-top:2px}
+  .id-box{background:linear-gradient(135deg,rgba(124,111,247,.15),rgba(168,85,247,.1));border:1px solid rgba(124,111,247,.3);border-radius:var(--r);padding:20px;width:100%;margin-bottom:22px;text-align:left}
+  .id-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--p);margin-bottom:7px}
+  .id-stmt{font-size:17px;font-weight:700;line-height:1.4}
+
+  /* BUTTONS */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:13px 22px;border-radius:var(--r);font-size:15px;font-weight:700;border:none;cursor:pointer;transition:all .15s;-webkit-tap-highlight-color:transparent;font-family:inherit}
+  .btn:active{transform:scale(.97)}
+  .btn-p{background:var(--pd);color:#fff}
+  .btn-p:hover{background:var(--p)}
+  .btn-g{background:var(--s2);color:var(--t1);border:1px solid var(--border)}
+  .btn-d{background:rgba(252,106,106,.1);color:var(--err);border:1px solid rgba(252,106,106,.2)}
+  .btn-w{width:100%}
+  .btn-sm{padding:9px 16px;font-size:13px;border-radius:var(--rs)}
+
+  /* FORMS */
+  .fg{margin-bottom:16px}
+  .lbl{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--t2);margin-bottom:7px}
+  .inp{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:var(--rs);color:var(--t1);padding:11px 13px;font-size:15px;outline:none;font-family:inherit;transition:border-color .15s}
+  .inp:focus{border-color:var(--p)}
+  .inp::placeholder{color:var(--t3)}
+  textarea.inp{resize:none;min-height:76px;line-height:1.5}
+  select.inp option{background:var(--s2)}
+  .type-toggle{display:grid;grid-template-columns:1fr 1fr;background:var(--s2);border-radius:var(--rs);padding:4px;gap:4px}
+  .ttb{padding:10px;border-radius:7px;border:none;background:none;color:var(--t2);font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;font-family:inherit}
+  .ttb.sb{background:rgba(45,212,160,.15);color:var(--ok)}
+  .ttb.sk{background:rgba(252,106,106,.15);color:var(--err)}
+
+  /* MODAL */
+  .mwrap{position:absolute;inset:0;background:rgba(0,0,0,.75);z-index:100;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .22s}
+  .mwrap.open{opacity:1;pointer-events:all}
+  .modal{background:var(--s1);border-radius:22px 22px 0 0;width:100%;max-height:92vh;overflow-y:auto;padding:12px 20px 44px;border-top:1px solid var(--border);transform:translateY(40px);transition:transform .28s cubic-bezier(.4,0,.2,1)}
+  .mwrap.open .modal{transform:translateY(0)}
+  .mhandle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px}
+  .modal h2{font-size:19px;font-weight:800;margin-bottom:18px;letter-spacing:-.3px}
+
+  /* TOAST */
+  .toast{position:absolute;bottom:86px;left:50%;transform:translateX(-50%) translateY(12px);background:var(--s2);border:1px solid var(--border);border-radius:100px;padding:10px 20px;font-size:14px;font-weight:600;z-index:300;opacity:0;transition:all .22s;white-space:nowrap;pointer-events:none}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* FAB */
+  .fab{position:absolute;bottom:82px;right:20px;width:54px;height:54px;border-radius:50%;background:var(--pd);color:#fff;font-size:26px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 24px rgba(91,79,212,.45);z-index:40;transition:transform .15s;-webkit-tap-highlight-color:transparent}
+  .fab:active{transform:scale(.91)}
+
+  /* PROGRESS */
+  .pbar{height:6px;background:var(--s2);border-radius:3px;overflow:hidden}
+  .pfill{height:100%;background:var(--p);border-radius:3px;transition:width .5s cubic-bezier(.4,0,.2,1)}
+  .pfill.ok{background:var(--ok)}
+
+  /* HEATMAP */
+  .hmap{display:grid;grid-template-columns:repeat(10,1fr);gap:5px;padding:2px 0}
+  .hcell{aspect-ratio:1;border-radius:5px;background:var(--s2)}
+  .hcell.done{background:var(--ok)}
+  .hcell.today{box-shadow:0 0 0 2px var(--p)}
+
+  /* STATS */
+  .sgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px;margin-bottom:10px}
+  .scard{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:16px}
+  .sval{font-size:30px;font-weight:800;line-height:1}
+  .slbl{font-size:12px;color:var(--t2);margin-top:4px}
+
+  /* TODAY HERO */
+  .today-hero{padding:20px 20px 12px}
+  .greeting{font-size:24px;font-weight:800;letter-spacing:-.4px}
+  .today-sub{font-size:13px;color:var(--t2);margin-top:2px}
+  .prog-text{display:flex;justify-content:space-between;font-size:13px;color:var(--t2);margin:14px 0 5px}
+  .prog-text strong{color:var(--p);font-weight:700}
+
+  /* CHECK-IN CARD */
+  .ci-card{margin:0 16px 12px;padding:18px;border-radius:var(--r);background:linear-gradient(135deg,rgba(91,79,212,.5),rgba(168,85,247,.3));border:1px solid rgba(124,111,247,.3)}
+  .ci-card h3{font-size:15px;font-weight:700;margin-bottom:5px}
+  .ci-card p{font-size:13px;opacity:.8;margin-bottom:12px;line-height:1.4}
+  .ci-btn{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.25);color:#fff;padding:9px 18px;border-radius:var(--rs);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+
+  /* MISS BANNER */
+  .miss{margin:0 16px 10px;padding:14px 16px;background:rgba(252,106,106,.07);border:1px solid rgba(252,106,106,.22);border-radius:var(--r);font-size:13px;line-height:1.6;color:var(--t2)}
+  .miss strong{color:var(--err)}
+
+  /* EMPTY */
+  .empty{text-align:center;padding:44px 24px;color:var(--t2)}
+  .empty .ei{font-size:44px;margin-bottom:12px}
+  .empty .et{font-size:16px;font-weight:700;color:var(--t1);margin-bottom:6px}
+  .empty .ed{font-size:13px;line-height:1.6}
+
+  /* RATING */
+  .rating-row{display:flex;gap:10px;justify-content:center;margin:12px 0}
+  .rbtn{width:46px;height:46px;border-radius:50%;background:var(--s2);border:2px solid var(--border);font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+  .rbtn.on{border-color:var(--p);background:rgba(124,111,247,.15);transform:scale(1.1)}
+
+  /* ICONS */
+  .icon-grid{display:flex;flex-wrap:wrap;gap:7px}
+  .ibtn{width:40px;height:40px;border-radius:var(--rs);background:var(--s2);border:1.5px solid var(--border);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+  .ibtn.on{border-color:var(--p);background:rgba(124,111,247,.15)}
+
+  /* AI COACH */
+  .coach{margin:0 16px 10px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+  .coach-hdr{padding:12px 16px;background:linear-gradient(90deg,rgba(91,79,212,.2),rgba(168,85,247,.1));border-bottom:1px solid var(--border);font-size:13px;font-weight:700;color:var(--p);display:flex;align-items:center;gap:6px}
+  .coach-row{display:flex;gap:8px;padding:10px}
+  .coach-input{flex:1;background:var(--s2);border:1px solid var(--border);border-radius:var(--rs);color:var(--t1);padding:9px 12px;font-size:14px;outline:none;font-family:inherit}
+  .coach-input:focus{border-color:var(--p)}
+  .coach-send{width:38px;height:38px;border-radius:var(--rs);background:var(--pd);color:#fff;border:none;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .coach-resp{padding:0 14px 14px;font-size:13px;line-height:1.7;color:var(--t2)}
+  .coach-resp strong{color:var(--t1)}
+
+  /* ARC */
+  .arc{padding:12px;background:var(--s2);border-radius:var(--rs);margin-bottom:12px}
+  .arc-lbl{display:flex;justify-content:space-between;font-size:12px;color:var(--t2);margin-bottom:6px}
+  .arc-lbl strong{color:var(--t1)}
+
+  /* CONFETTI */
+  .cp{position:fixed;width:8px;height:8px;border-radius:2px;pointer-events:none;z-index:999;animation:fall 1s ease-in forwards}
+  @keyframes fall{0%{transform:translateY(-20px) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
+
+  /* APP LOGO */
+  .app-logo{font-size:52px;margin-bottom:16px}
+  .app-name{font-size:32px;font-weight:900;letter-spacing:-1px;margin-bottom:8px}
+  .app-tag{font-size:15px;color:var(--t2);margin-bottom:36px;line-height:1.5;max-width:280px}
+
+  /* SETUP FORM */
+  .setup-form{width:100%;text-align:left;max-width:360px}
+  .setup-note{font-size:12px;color:var(--t2);margin-top:14px;text-align:center;line-height:1.8}
+  .setup-note a{color:var(--p);text-decoration:none}
+
+  /* SETTINGS */
+  .sitem{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--border)}
+  .sitem:last-child{border-bottom:none}
+  .sitem-label{font-size:14px;font-weight:600}
+  .sitem-sub{font-size:12px;color:var(--t2);margin-top:2px}
+
+  /* HINT text */
+  .hint{font-size:11px;color:var(--t3);margin-top:5px;line-height:1.5}
+
+  /* THREE-LINE TAGS */
+  .tag{display:inline-block;padding:2px 8px;border-radius:100px;font-size:11px;font-weight:700}
+  .tag-b{background:rgba(45,212,160,.12);color:var(--ok)}
+  .tag-k{background:rgba(252,106,106,.12);color:var(--err)}
+  </style>
+</head>
+<body>
+<div id="root">
+
+<div id="toast" class="toast"></div>
+
+<!-- ═══ SETUP ══════════════════════════════════════════════ -->
+<div id="setup" class="fullpage">
+  <div class="app-logo">⚡</div>
+  <div class="app-name">HabitFlow</div>
+  <p class="app-tag">Füge deine Firebase-Konfiguration ein für geräteübergreifende Synchronisation.</p>
+  <div class="setup-form">
+    <div class="fg">
+      <label class="lbl">Firebase-Konfiguration (JSON)</label>
+      <textarea id="fb-inp" class="inp" style="height:130px;font-family:monospace;font-size:12px"
+        placeholder='{"apiKey":"...","authDomain":"...","projectId":"...", ...}'></textarea>
+    </div>
+    <button class="btn btn-p btn-w" onclick="applyFB()">Verbinden ↗</button>
+    <p class="setup-note">
+      Noch kein Projekt? →
+      <a href="https://console.firebase.google.com" target="_blank">Firebase Console</a> öffnen<br>
+      Neues Projekt → Web-App → Config kopieren<br>
+      Authentication → Google aktivieren<br>
+      Firestore Database erstellen (Test-Modus)
+    </p>
+  </div>
+</div>
+
+<!-- ═══ LOGIN ═══════════════════════════════════════════════ -->
+<div id="login" class="fullpage hidden">
+  <div class="app-logo">🔥</div>
+  <div class="app-name">HabitFlow</div>
+  <p class="app-tag">Wissenschaftlich fundiertes Habit-Tracking.<br>Basiert auf Atomic Habits & BJ Fogg.</p>
+  <button class="btn btn-p btn-w" style="max-width:300px;gap:12px" onclick="loginGoogle()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57C21.36 18.34 22.56 15.5 22.56 12.25z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+    Mit Google anmelden
+  </button>
+  <button onclick="loginAnon()" style="background:none;border:none;color:var(--t2);font-size:13px;cursor:pointer;margin-top:12px;font-family:inherit">Ohne Konto ausprobieren</button>
+</div>
+
+<!-- ═══ ONBOARDING ═══════════════════════════════════════════ -->
+<div id="onboard" class="fullpage hidden" style="justify-content:flex-start;padding:0">
+  <div id="ob1" class="ob-cont">
+    <div class="ob-emoji">🌟</div>
+    <div class="ob-title">Wer möchtest du werden?</div>
+    <div class="ob-body">Gewohnheiten beginnen mit <strong style="color:var(--t1)">Identität</strong>, nicht mit Zielen. Welcher Bereich bedeutet dir am meisten?</div>
+    <div class="opt-grid" id="ob-area"></div>
+    <button class="btn btn-p btn-w" onclick="obNext(1)">Weiter →</button>
+  </div>
+  <div id="ob2" class="ob-cont" style="display:none">
+    <div class="ob-emoji">🧩</div>
+    <div class="ob-title">Deine größte Hürde?</div>
+    <div class="ob-body">Was macht es dir schwer, Gewohnheiten aufzubauen?</div>
+    <div class="opt-grid" id="ob-chal"></div>
+    <button class="btn btn-p btn-w" onclick="obNext(2)">Weiter →</button>
+  </div>
+  <div id="ob3" class="ob-cont" style="display:none">
+    <div class="ob-emoji">💎</div>
+    <div class="ob-title">Deine neue Identität</div>
+    <div class="ob-body">Erfolgreiche Menschen fragen nicht "Was will ich tun?" sondern "Wer will ich sein?"</div>
+    <div class="id-box">
+      <div class="id-label">Ich bin jemand, der/die...</div>
+      <div class="id-stmt" id="ob-stmt"></div>
+    </div>
+    <div class="ob-body" style="margin-bottom:22px">Wir beginnen mit <strong style="color:var(--t1)">einer einzigen Gewohnheit</strong>. Forschung zeigt: weniger ist am Anfang mehr.</div>
+    <button class="btn btn-p btn-w" onclick="obFinish()">Erste Gewohnheit anlegen ✨</button>
+  </div>
+</div>
+
+<!-- ═══ MAIN APP ══════════════════════════════════════════════ -->
+<div id="app" style="display:none;position:absolute;inset:0;flex-direction:column">
+
+  <!-- TODAY VIEW -->
+  <div id="vt" class="view active">
+    <div class="scroll">
+      <div class="today-hero">
+        <div class="greeting" id="greeting">Guten Morgen! 🌅</div>
+        <div class="today-sub" id="datestr"></div>
+        <div class="prog-text">
+          <span id="prog-lbl">Lade...</span>
+          <strong id="prog-pct">0%</strong>
+        </div>
+        <div class="pbar"><div class="pfill" id="prog-fill" style="width:0%"></div></div>
+      </div>
+      <div id="miss-banner" class="miss" style="display:none">
+        <strong>🔄 Nicht zweimal aussetzen.</strong><br>
+        Gestern hattest du einen freien Tag — okay. Heute wieder dabei!
+      </div>
+      <div id="morning-card" class="ci-card" style="display:none">
+        <h3>☀️ Morgen-Intention</h3>
+        <p id="morning-prev">Was ist dein wichtigstes Ziel für heute?</p>
+        <button class="ci-btn" onclick="openM('morning')">Intention setzen</button>
+      </div>
+      <div id="evening-card" class="ci-card" style="display:none;background:linear-gradient(135deg,rgba(20,40,80,.8),rgba(40,20,100,.6))">
+        <h3>🌙 Abend-Reflexion</h3>
+        <p>Wie war dein Tag? Reflexion festigt Gewohnheiten.</p>
+        <button class="ci-btn" onclick="openM('evening')">Tag abschließen</button>
+      </div>
+      <div class="sec">HEUTE</div>
+      <div id="today-list"></div>
+      <!-- AI COACH -->
+      <div class="sec">KI-COACH</div>
+      <div class="coach">
+        <div class="coach-hdr">🤖 Habit Coach <span style="font-size:11px;color:var(--t2);margin-left:auto;font-weight:400">Claude API (optional)</span></div>
+        <div class="coach-row">
+          <input id="coach-inp" class="coach-input" placeholder='z.B. "Ich will morgens meditieren"'>
+          <button class="coach-send" onclick="askCoach()">→</button>
+        </div>
+        <div id="coach-resp" class="coach-resp" style="display:none"></div>
+      </div>
+    </div>
+    <nav class="bnav">
+      <button class="nb on" onclick="nav('t')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Heute</button>
+      <button class="nb" onclick="nav('h')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Gewohnheiten</button>
+      <button class="nb" onclick="nav('g')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>Ziele</button>
+      <button class="nb" onclick="nav('s')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>Statistiken</button>
+    </nav>
+  </div>
+
+  <!-- HABITS VIEW -->
+  <div id="vh" class="view">
+    <div class="hdr">
+      <div><h1>Gewohnheiten</h1><div style="font-size:13px;color:var(--t2)" id="h-sub">0 aktiv</div></div>
+      <button class="icon-btn" onclick="openM('settings')" title="Einstellungen">⚙️</button>
+    </div>
+    <div class="scroll">
+      <div class="sec">AUFBAUEN 🌱</div>
+      <div id="build-list"></div>
+      <div class="sec">ABGEWÖHNEN 🚫</div>
+      <div id="break-list"></div>
+    </div>
+    <button class="fab" onclick="openAddHabit()">+</button>
+    <nav class="bnav">
+      <button class="nb" onclick="nav('t')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Heute</button>
+      <button class="nb on" onclick="nav('h')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Gewohnheiten</button>
+      <button class="nb" onclick="nav('g')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/></svg>Ziele</button>
+      <button class="nb" onclick="nav('s')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>Statistiken</button>
+    </nav>
+  </div>
+
+  <!-- GOALS VIEW -->
+  <div id="vg" class="view">
+    <div class="hdr"><h1>Ziele</h1></div>
+    <div class="scroll"><div id="goals-list"></div></div>
+    <button class="fab" onclick="openM('goal')">+</button>
+    <nav class="bnav">
+      <button class="nb" onclick="nav('t')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Heute</button>
+      <button class="nb" onclick="nav('h')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/></svg>Gewohnheiten</button>
+      <button class="nb on" onclick="nav('g')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>Ziele</button>
+      <button class="nb" onclick="nav('s')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>Statistiken</button>
+    </nav>
+  </div>
+
+  <!-- STATS VIEW -->
+  <div id="vs" class="view">
+    <div class="hdr"><h1>Statistiken</h1></div>
+    <div class="scroll">
+      <div class="sgrid" id="stats-grid"></div>
+      <div class="sec">VERLAUF PRO GEWOHNHEIT (30 Tage)</div>
+      <div id="stats-habits"></div>
+    </div>
+    <nav class="bnav">
+      <button class="nb" onclick="nav('t')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Heute</button>
+      <button class="nb" onclick="nav('h')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/></svg>Gewohnheiten</button>
+      <button class="nb" onclick="nav('g')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/></svg>Ziele</button>
+      <button class="nb on" onclick="nav('s')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>Statistiken</button>
+    </nav>
+  </div>
+</div>
+
+<!-- ═══ MODALS ════════════════════════════════════════════════ -->
+
+<!-- Add/Edit Habit -->
+<div id="habit-m" class="mwrap" onclick="mclick(event,'habit-m')">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <h2 id="hm-title">Gewohnheit hinzufügen</h2>
+    <div class="fg">
+      <div class="type-toggle">
+        <button class="ttb sb" id="tb-b" onclick="selType('build')">🌱 Aufbauen</button>
+        <button class="ttb" id="tb-k" onclick="selType('break')">🚫 Abgewöhnen</button>
+      </div>
+    </div>
+    <div class="fg">
+      <label class="lbl">Icon</label>
+      <div class="icon-grid" id="icon-grid"></div>
+    </div>
+    <div class="fg">
+      <label class="lbl">Name</label>
+      <input id="h-name" class="inp" placeholder="z.B. 20 Minuten lesen" maxlength="70">
+    </div>
+    <div class="fg">
+      <label class="lbl">2-Minuten-Version (Einstieg)</label>
+      <input id="h-tiny" class="inp" placeholder='z.B. "Buch aufschlagen"' maxlength="100">
+      <div class="hint">Fang klein an — Konsistenz kommt vor Umfang.</div>
+    </div>
+    <div class="fg">
+      <label class="lbl">Cue / Auslöser</label>
+      <input id="h-cue" class="inp" placeholder='z.B. "Nachdem ich Kaffee gemacht habe"' maxlength="100">
+    </div>
+    <div class="fg">
+      <label class="lbl">Uhrzeit</label>
+      <select id="h-time" class="inp">
+        <option value="any">Jederzeit</option>
+        <option value="morning">Morgens (6–12 Uhr)</option>
+        <option value="afternoon">Nachmittags (12–17 Uhr)</option>
+        <option value="evening">Abends (17–22 Uhr)</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label class="lbl">Temptation Bundling (optional)</label>
+      <input id="h-bundle" class="inp" placeholder='z.B. "Nur meinen Lieblings-Podcast beim Sport"' maxlength="100">
+      <div class="hint">Paare die Gewohnheit mit etwas Schönem.</div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-g" style="flex:1" onclick="closeM('habit-m')">Abbrechen</button>
+      <button class="btn btn-p" style="flex:2" onclick="saveHabit()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Morning Check-In -->
+<div id="morning-m" class="mwrap" onclick="mclick(event,'morning-m')">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <h2>☀️ Guten Morgen!</h2>
+    <div class="fg">
+      <label class="lbl">Wichtigste Intention für heute</label>
+      <input id="morning-inp" class="inp" placeholder="Heute möchte ich..." maxlength="140">
+    </div>
+    <button class="btn btn-p btn-w" onclick="saveMorning()">Tag starten 🚀</button>
+  </div>
+</div>
+
+<!-- Evening Check-In -->
+<div id="evening-m" class="mwrap" onclick="mclick(event,'evening-m')">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <h2>🌙 Wie war dein Tag?</h2>
+    <div class="fg">
+      <label class="lbl">Tagesbewertung</label>
+      <div class="rating-row">
+        <button class="rbtn" onclick="setR(1)">😕</button>
+        <button class="rbtn" onclick="setR(2)">😐</button>
+        <button class="rbtn" onclick="setR(3)">🙂</button>
+        <button class="rbtn" onclick="setR(4)">😊</button>
+        <button class="rbtn" onclick="setR(5)">🤩</button>
+      </div>
+    </div>
+    <div class="fg">
+      <label class="lbl">Notiz (optional)</label>
+      <textarea id="evening-note" class="inp" placeholder="Was lief gut? Was morgen besser?"></textarea>
+    </div>
+    <button class="btn btn-p btn-w" onclick="saveEvening()">Speichern ✓</button>
+  </div>
+</div>
+
+<!-- Habit Detail -->
+<div id="detail-m" class="mwrap" onclick="mclick(event,'detail-m')">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+      <div style="font-size:36px" id="d-icon">⭐</div>
+      <div><div style="font-size:18px;font-weight:800" id="d-name">–</div><div style="font-size:12px;color:var(--t2)" id="d-cue"></div></div>
+    </div>
+    <div id="d-tiny-wrap" style="background:var(--s2);border-radius:var(--rs);padding:12px;margin-bottom:12px;display:none">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--p);margin-bottom:4px">2-MINUTEN-VERSION</div>
+      <div id="d-tiny" style="font-size:13px;color:var(--t2)"></div>
+    </div>
+    <div id="d-bundle-wrap" style="background:var(--s2);border-radius:var(--rs);padding:12px;margin-bottom:12px;display:none">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--warn);margin-bottom:4px">🎵 KOPPELUNG</div>
+      <div id="d-bundle" style="font-size:13px;color:var(--t2)"></div>
+    </div>
+    <div class="arc">
+      <div class="arc-lbl"><span>66-Tage-Formationsfenster</span><strong><span id="d-arc-n">0</span>/66</strong></div>
+      <div class="pbar" style="height:8px"><div class="pfill ok" id="d-arc-fill" style="width:0%"></div></div>
+      <div style="font-size:11px;color:var(--t3);margin-top:5px">Nach ~66 Tagen wird die Gewohnheit zur Routine (Lally et al., 2010)</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px">
+      <div class="scard" style="text-align:center;padding:12px">
+        <div class="sval" id="d-streak" style="font-size:22px;color:var(--warn)">0</div>
+        <div class="slbl">🔥 Streak</div>
+      </div>
+      <div class="scard" style="text-align:center;padding:12px">
+        <div class="sval" id="d-best" style="font-size:22px;color:var(--p)">0</div>
+        <div class="slbl">🏆 Rekord</div>
+      </div>
+      <div class="scard" style="text-align:center;padding:12px">
+        <div class="sval" id="d-rate" style="font-size:22px;color:var(--ok)">–</div>
+        <div class="slbl">📊 30d</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-g" style="flex:1" onclick="closeM('detail-m')">Schließen</button>
+      <button class="btn btn-d" style="flex:1" id="del-btn">Löschen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Goal -->
+<div id="goal-m" class="mwrap" onclick="mclick(event,'goal-m')">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <h2>🎯 Ziel setzen</h2>
+    <div class="fg">
+      <label class="lbl">Bis [Datum] werde ich...</label>
+      <input id="g-title" class="inp" placeholder="z.B. täglich 30 Min. lesen" maxlength="100">
+    </div>
+    <div class="fg">
+      <label class="lbl">Gemessen an</label>
+      <input id="g-metric" class="inp" placeholder="z.B. 12 Bücher gelesen" maxlength="100">
+    </div>
+    <div class="fg">
+      <label class="lbl">Ziel-Datum</label>
+      <input id="g-date" class="inp" type="date">
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-g" style="flex:1" onclick="closeM('goal-m')">Abbrechen</button>
+      <button class="btn btn-p" style="flex:2" onclick="saveGoal()">Ziel setzen 🎯</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div id="settings-m" class="mwrap" onclick="mclick(event,'settings-m')">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <h2>⚙️ Einstellungen</h2>
+    <div class="fg">
+      <label class="lbl">Claude API Key (für KI-Coach)</label>
+      <input id="claude-key" class="inp" type="password" placeholder="sk-ant-...">
+      <div class="hint">Optional. Nur lokal gespeichert. Kostenlos auf console.anthropic.com</div>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:16px">
+      <button class="btn btn-p" style="flex:1" onclick="saveSettings()">Speichern</button>
+    </div>
+    <div class="sitem">
+      <div><div class="sitem-label">Firebase neu konfigurieren</div><div class="sitem-sub">Verbindung ändern</div></div>
+      <button class="btn btn-g btn-sm" onclick="resetFB()">Zurücksetzen</button>
+    </div>
+    <div class="sitem">
+      <div><div class="sitem-label">Abmelden</div></div>
+      <button class="btn btn-d btn-sm" onclick="signOut()">Abmelden</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ JAVASCRIPT ════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+// ── CONSTANTS ──────────────────────────────────────────────────────
+const TODAY = new Date();
+const TD = TODAY.toISOString().split('T')[0];
+const HR = TODAY.getHours();
+const DAYS = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+const MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+
+const BUILD_ICONS = ['📚','🏃','🧘','💪','💧','🥗','😴','✍️','🎯','🧠','🌿','❤️','🎵','🌅','🧹','🎨','🏊','🚴','🌱','⚡'];
+const BREAK_ICONS = ['📱','🍕','🚬','🍺','🍭','📺','🎮','☕','🛍️','😤','🍫','🧁'];
+
+const AREAS = [
+  {icon:'💪', label:'Gesundheit', desc:'Körper & Energie', stmt:'regelmäßig für seinen Körper sorgt'},
+  {icon:'🧠', label:'Geist', desc:'Lernen & Klarheit', stmt:'täglich Neues lernt und wächst'},
+  {icon:'❤️', label:'Beziehungen', desc:'Verbindung & Liebe', stmt:'bewusst Zeit für wichtige Menschen nimmt'},
+  {icon:'💼', label:'Arbeit', desc:'Fokus & Ergebnisse', stmt:'tiefe Arbeit über Ablenkung stellt'},
+  {icon:'🎨', label:'Kreativität', desc:'Ausdruck & Schaffen', stmt:'seine Kreativität täglich lebt'},
+  {icon:'🌿', label:'Balance', desc:'Ruhe & Achtsamkeit', stmt:'bewusst lebt und Momente genießt'}
+];
+
+const CHALLENGES = [
+  {icon:'🚀', label:'Anfangen', desc:'Ich fange nicht an'},
+  {icon:'📅', label:'Konsistenz', desc:'Ich bleibe nicht dran'},
+  {icon:'⏱️', label:'Zeit', desc:'Keine Zeit gefunden'},
+  {icon:'💡', label:'Motivation', desc:'Verliere die Lust'}
+];
+
+// ── STATE ──────────────────────────────────────────────────────────
+let db, auth, uid;
+let habits = [], goals = [];
+let todayComp = {}, todayLog = {};
+let obArea = null, obChal = null;
+let selType_ = 'build', selIcon_ = '📚';
+let selRating = 0;
+let editId = null;
+let curView = 't';
+
+// ── FIREBASE ───────────────────────────────────────────────────────
+function applyFB() {
+  const raw = document.getElementById('fb-inp').value.trim();
+  try { initFB(JSON.parse(raw)); localStorage.setItem('hf_fb', raw); }
+  catch(e) { toast('Ungültiges JSON — bitte prüfen'); }
+}
+
+function initFB(cfg) {
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
+    db = firebase.firestore();
+    auth = firebase.auth();
+    auth.onAuthStateChanged(onAuth);
+  } catch(e) { toast('Firebase-Fehler: ' + e.message); showEl('setup'); }
+}
+
+async function onAuth(user) {
+  hide('setup'); hide('login'); hide('onboard');
+  if (!user) { show('login'); return; }
+  uid = user.uid;
+  const doc = await uref().get();
+  if (!doc.exists || !doc.data().onboardingCompleted) {
+    startOB();
+  } else {
+    startApp();
+  }
+}
+
+const uref  = () => db.collection('users').doc(uid);
+const href  = () => uref().collection('habits');
+const gref  = () => uref().collection('goals');
+const cref  = () => uref().collection('completions');
+const dref  = () => uref().collection('daily');
+
+function loginGoogle() { auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(e=>toast(e.message)); }
+function loginAnon()   { auth.signInAnonymously().catch(e=>toast(e.message)); }
+function signOut()     { auth.signOut(); closeM('settings-m'); }
+function resetFB()     { localStorage.removeItem('hf_fb'); location.reload(); }
+
+// ── ONBOARDING ─────────────────────────────────────────────────────
+function startOB() {
+  show('onboard');
+  document.getElementById('ob-area').innerHTML = AREAS.map((a,i)=>`
+    <div class="opt-card" onclick="selOA(${i},this)">
+      <div class="oi">${a.icon}</div>
+      <div class="ol">${a.label}</div>
+      <div class="od">${a.desc}</div>
+    </div>`).join('');
+  document.getElementById('ob-chal').innerHTML = CHALLENGES.map((c,i)=>`
+    <div class="opt-card" onclick="selOC(${i},this)">
+      <div class="oi">${c.icon}</div>
+      <div class="ol">${c.label}</div>
+      <div class="od">${c.desc}</div>
+    </div>`).join('');
+}
+
+function selOA(i,el) { obArea=i; document.querySelectorAll('#ob-area .opt-card').forEach(c=>c.classList.remove('sel')); el.classList.add('sel'); }
+function selOC(i,el) { obChal=i; document.querySelectorAll('#ob-chal .opt-card').forEach(c=>c.classList.remove('sel')); el.classList.add('sel'); }
+
+function obNext(step) {
+  if (step===1) {
+    if (obArea===null) { toast('Bitte wählen'); return; }
+    document.getElementById('ob1').style.display='none';
+    document.getElementById('ob2').style.display='flex';
+    return;
+  }
+  if (step===2) {
+    if (obChal===null) { toast('Bitte wählen'); return; }
+    document.getElementById('ob-stmt').textContent = AREAS[obArea].stmt;
+    document.getElementById('ob2').style.display='none';
+    document.getElementById('ob3').style.display='flex';
+  }
+}
+
+async function obFinish() {
+  await uref().set({ onboardingCompleted:true, identityArea:obArea, identityChallenge:obChal, identityStatement:AREAS[obArea].stmt, createdAt:firebase.firestore.FieldValue.serverTimestamp() }, {merge:true});
+  hide('onboard');
+  startApp();
+  setTimeout(()=>openAddHabit(), 500);
+}
+
+// ── APP INIT ───────────────────────────────────────────────────────
+async function startApp() {
+  document.getElementById('app').style.display = 'flex';
+  setDateHeader();
+  buildIconGrid();
+  await Promise.all([loadHabits(), loadToday(), loadGoals()]);
+  checkMissBanner();
+}
+
+function setDateHeader() {
+  const d = TODAY;
+  document.getElementById('datestr').textContent = `${DAYS[d.getDay()]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  let g = HOUR < 5 ? 'Gute Nacht 🌙' : HOUR < 12 ? 'Guten Morgen! 🌅' : HOUR < 17 ? 'Guten Tag! ☀️' : HOUR < 21 ? 'Guten Abend! 🌆' : 'Gute Nacht 🌙';
+  document.getElementById('greeting').textContent = g;
+  if (HOUR >= 5 && HOUR < 11) document.getElementById('morning-card').style.display = 'block';
+  if (HOUR >= 18)             document.getElementById('evening-card').style.display = 'block';
+}
+
+function buildIconGrid() {
+  const all = [...BUILD_ICONS, ...BREAK_ICONS];
+  document.getElementById('icon-grid').innerHTML = all.map(ic =>
+    `<button class="ibtn ${ic===selIcon_?'on':''}" onclick="selIcon('${ic}',this)">${ic}</button>`
+  ).join('');
+}
+
+// ── DATA ───────────────────────────────────────────────────────────
+async function loadHabits() {
+  const s = await href().orderBy('createdAt','asc').get();
+  habits = s.docs.map(d=>({id:d.id,...d.data()}));
+  renderAll();
+}
+
+async function loadGoals() {
+  const s = await gref().orderBy('createdAt','asc').get();
+  goals = s.docs.map(d=>({id:d.id,...d.data()}));
+  renderGoals();
+}
+
+async function loadToday() {
+  const s = await cref().where('date','==',TD).get();
+  todayComp = {};
+  s.docs.forEach(d=>{ const x=d.data(); todayComp[x.habitId]=x.completed; });
+  const ld = await dref().doc(TD).get();
+  todayLog = ld.exists ? ld.data() : {};
+  if (todayLog.morningIntention) document.getElementById('morning-prev').textContent = `"${todayLog.morningIntention}"`;
+}
+
+async function checkMissBanner() {
+  if (!habits.length) return;
+  const y = new Date(TODAY); y.setDate(y.getDate()-1);
+  const yStr = y.toISOString().split('T')[0];
+  const s = await cref().where('date','==',yStr).get();
+  const yc = {};
+  s.docs.forEach(d=>{ const x=d.data(); yc[x.habitId]=x.completed; });
+  const missed = habits.some(h=>!yc[h.id]);
+  if (missed) document.getElementById('miss-banner').style.display='block';
+}
+
+// ── TOGGLE ─────────────────────────────────────────────────────────
+async function toggle(id) {
+  const was = todayComp[id]||false;
+  const now = !was;
+  todayComp[id] = now;
+  renderAll();
+  if (now) confetti();
+  await cref().doc(`${TD}_${id}`).set({ habitId:id, date:TD, completed:now, ts:firebase.firestore.FieldValue.serverTimestamp() });
+  await updateStreak(id, now);
+}
+
+async function updateStreak(id, done) {
+  const h = habits.find(h=>h.id===id);
+  if (!h) return;
+  if (done) {
+    const y = new Date(TODAY); y.setDate(y.getDate()-1);
+    const yStr = y.toISOString().split('T')[0];
+    const yd = await cref().doc(`${yStr}_${id}`).get();
+    const yDone = yd.exists && yd.data().completed;
+    const ns = yDone ? (h.streak||0)+1 : 1;
+    const nb = Math.max(ns, h.longestStreak||0);
+    const nt = (h.totalCompletions||0)+1;
+    await href().doc(id).update({streak:ns,longestStreak:nb,totalCompletions:nt});
+    Object.assign(h,{streak:ns,longestStreak:nb,totalCompletions:nt});
+    const ms = [7,14,21,30,66,100];
+    if (ms.includes(ns)) toast(`🎉 ${ns} Tage Streak — unglaublich!`);
+    else if (ns>1 && Math.random()<0.15) toast('⚡ Weiter so!');
+  } else {
+    await href().doc(id).update({streak:0});
+    h.streak=0;
+  }
+  renderAll();
+}
+
+// ── RENDER ─────────────────────────────────────────────────────────
+function renderAll() { renderToday(); renderHabits(); }
+
+function renderToday() {
+  const vis = habits.filter(h => {
+    if (h.timeOfDay==='morning'   && HR>=14) return false;
+    if (h.timeOfDay==='evening'   && HR<15)  return false;
+    if (h.timeOfDay==='afternoon' && (HR<12||HR>=18)) return false;
+    return true;
+  });
+  const done = vis.filter(h=>todayComp[h.id]).length;
+  const total = vis.length;
+  const pct = total ? Math.round(done/total*100) : 0;
+  document.getElementById('prog-lbl').textContent = `${done} von ${total} erledigt`;
+  document.getElementById('prog-pct').textContent  = pct+'%';
+  const fill = document.getElementById('prog-fill');
+  fill.style.width = pct+'%';
+  fill.classList.toggle('ok', pct===100 && total>0);
+
+  const list = document.getElementById('today-list');
+  if (!vis.length) {
+    list.innerHTML = `<div class="empty"><div class="ei">✨</div><div class="et">Noch keine Gewohnheiten</div><div class="ed">Tippe auf "Gewohnheiten" und füge deine erste hinzu.</div></div>`;
+    return;
+  }
+  list.innerHTML = vis.map(h=>{
+    const d = todayComp[h.id]||false;
+    const s = h.streak||0;
+    return `<div class="hrow ${d?'done':''}" onclick="toggle('${h.id}')" oncontextmenu="openDetail('${h.id}');return false">
+      <div class="cc ${d?'on':''}"></div>
+      <div class="htext">
+        <div class="hname">${h.icon||'⭐'} ${h.name}</div>
+        <div class="hsub">
+          ${s>0?`<span class="streak-chip">🔥 ${s}</span>`:''}
+          ${h.cue?`<span>${h.cue.substring(0,35)}${h.cue.length>35?'…':''}</span>`:''}
+        </div>
+        ${h.temptationBundle&&!d?`<div style="font-size:11px;color:var(--warn);margin-top:3px">🎵 ${h.temptationBundle}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderHabits() {
+  document.getElementById('h-sub').textContent = `${habits.length} aktiv`;
+  const render = (arr, id) => {
+    const el = document.getElementById(id);
+    if (!arr.length) { el.innerHTML=`<div class="empty" style="padding:20px"><div class="ed">Noch keine hier</div></div>`; return; }
+    el.innerHTML = arr.map(h=>{
+      const d=todayComp[h.id]||false, s=h.streak||0;
+      return `<div class="hrow ${d?'done':''}" onclick="toggle('${h.id}')" oncontextmenu="openDetail('${h.id}');return false">
+        <div class="cc ${d?'on':''}"></div>
+        <div class="htext">
+          <div class="hname">${h.icon||'⭐'} ${h.name}</div>
+          <div class="hsub">${s>0?`<span class="streak-chip">🔥 ${s}</span>`:'<span>Kein Streak</span>'}${h.longestStreak>0?`<span>· 🏆 ${h.longestStreak}</span>`:''}</div>
+        </div>
+        <button style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:18px;padding:6px;line-height:1" onclick="event.stopPropagation();openDetail('${h.id}')">•••</button>
+      </div>`;
+    }).join('');
+  };
+  render(habits.filter(h=>h.type==='build'),'build-list');
+  render(habits.filter(h=>h.type==='break'),'break-list');
+}
+
+function renderGoals() {
+  const el = document.getElementById('goals-list');
+  if (!goals.length) { el.innerHTML=`<div class="empty"><div class="ei">🎯</div><div class="et">Noch keine Ziele</div><div class="ed">Setze ein Ziel und verknüpfe es mit deinen Gewohnheiten.</div></div>`; return; }
+  el.innerHTML = goals.map(g=>{
+    const dl = g.targetDate ? new Date(g.targetDate+'T12:00:00').toLocaleDateString('de-DE',{day:'numeric',month:'long',year:'numeric'}) : '';
+    const left = g.targetDate ? Math.ceil((new Date(g.targetDate+'T12:00:00')-TODAY)/86400000) : null;
+    return `<div class="card">
+      <div style="font-size:16px;font-weight:700;margin-bottom:4px">🎯 ${g.title}</div>
+      ${g.metric?`<div style="font-size:13px;color:var(--t2);margin-bottom:6px">Gemessen an: ${g.metric}</div>`:''}
+      ${dl?`<div style="font-size:12px;color:var(--t2);margin-bottom:10px">📅 ${dl}${left!==null?` · ${left>0?left+' Tage':left===0?'Heute!':'Abgelaufen'}`:''}</div>`:''}
+      <div style="display:flex;gap:8px">
+        ${!g.completed
+          ?`<button class="btn btn-sm btn-p" style="flex:1" onclick="completeGoal('${g.id}')">✓ Erreicht</button><button class="btn btn-sm btn-g" onclick="deleteGoal('${g.id}')">Löschen</button>`
+          :`<span style="color:var(--ok);font-size:14px;font-weight:700">✅ Ziel erreicht!</span>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function renderStats() {
+  const tot = habits.length;
+  const done = habits.filter(h=>todayComp[h.id]).length;
+  const maxS = habits.reduce((m,h)=>Math.max(m,h.streak||0),0);
+  const totD = habits.reduce((m,h)=>m+(h.totalCompletions||0),0);
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="scard"><div class="sval" style="color:var(--ok)">${done}/${tot}</div><div class="slbl">Heute ✓</div></div>
+    <div class="scard"><div class="sval" style="color:var(--warn)">🔥 ${maxS}</div><div class="slbl">Bester Streak</div></div>
+    <div class="scard"><div class="sval" style="color:var(--p)">${tot}</div><div class="slbl">Aktive Habits</div></div>
+    <div class="scard"><div class="sval" style="color:var(--ok)">${totD}</div><div class="slbl">Gesamt ✓</div></div>
+  `;
+  if (!habits.length) { document.getElementById('stats-habits').innerHTML='<div class="empty"><div class="ed">Noch keine Daten</div></div>'; return; }
+
+  // 30 days
+  const days=[];
+  for (let i=29;i>=0;i--) { const d=new Date(TODAY); d.setDate(d.getDate()-i); days.push(d.toISOString().split('T')[0]); }
+  const cmap={};
+  for (let i=0;i<days.length;i+=10) {
+    const b=days.slice(i,i+10);
+    const s=await cref().where('date','in',b).get();
+    s.docs.forEach(d=>{ const x=d.data(); cmap[`${x.date}_${x.habitId}`]=x.completed; });
+  }
+
+  document.getElementById('stats-habits').innerHTML = habits.map(h=>{
+    const d30=days.filter(day=>cmap[`${day}_${h.id}`]).length;
+    const rate=Math.round(d30/30*100);
+    const arc=Math.min(100,Math.round((h.totalCompletions||0)/66*100));
+    const cells=days.map(day=>`<div class="hcell ${cmap[`${day}_${h.id}`]?'done':''} ${day===TD?'today':''}"></div>`).join('');
+    return `<div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-weight:700">${h.icon||'⭐'} ${h.name}</div>
+        <div style="font-size:13px;color:var(--t2)">${rate}%</div>
+      </div>
+      <div class="hmap">${cells}</div>
+      <div style="font-size:11px;color:var(--t2);margin:8px 0 4px;display:flex;justify-content:space-between"><span>66-Tage-Fenster</span><span>${Math.min(h.totalCompletions||0,66)}/66</span></div>
+      <div class="pbar"><div class="pfill ok" style="width:${arc}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+// ── HABIT CRUD ──────────────────────────────────────────────────────
+function openAddHabit() {
+  editId=null;
+  document.getElementById('hm-title').textContent='Gewohnheit hinzufügen';
+  ['h-name','h-tiny','h-cue','h-bundle'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('h-time').value='any';
+  selType_='build'; selIcon_='📚';
+  document.getElementById('tb-b').className='ttb sb';
+  document.getElementById('tb-k').className='ttb';
+  buildIconGrid();
+  openM('habit');
+}
+
+async function saveHabit() {
+  const name = document.getElementById('h-name').value.trim();
+  if (!name) { toast('Bitte Namen eingeben'); return; }
+
+  // Habit limit
+  if (!editId) {
+    const udoc = await uref().get();
+    const since = udoc.data().createdAt?.toDate() ? (TODAY - udoc.data().createdAt.toDate())/86400000 : 0;
+    const limit = since < 30 ? 3 : 6;
+    if (habits.length >= limit) { toast(`Max. ${limit} Gewohnheiten — Qualität vor Quantität!`); return; }
+  }
+
+  const data = {
+    name, type:selType_, icon:selIcon_,
+    twoMinuteVersion: document.getElementById('h-tiny').value.trim(),
+    cue:              document.getElementById('h-cue').value.trim(),
+    timeOfDay:        document.getElementById('h-time').value,
+    temptationBundle: document.getElementById('h-bundle').value.trim(),
+    streak:0, longestStreak:0, totalCompletions:0
+  };
+
+  if (editId) {
+    delete data.streak; delete data.longestStreak; delete data.totalCompletions;
+    await href().doc(editId).update(data);
+    const i=habits.findIndex(h=>h.id===editId);
+    if(i>=0) Object.assign(habits[i],data);
+  } else {
+    data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+    const ref = await href().add(data);
+    habits.push({id:ref.id,...data});
+  }
+
+  closeM('habit'); renderAll();
+  toast(editId?'✅ Aktualisiert!':'✅ Gewohnheit hinzugefügt!');
+}
+
+async function deleteHabit(id) {
+  if (!confirm('Gewohnheit wirklich löschen?')) return;
+  await href().doc(id).delete();
+  habits = habits.filter(h=>h.id!==id);
+  closeM('detail-m'); renderAll(); toast('Gelöscht');
+}
+
+// ── GOAL CRUD ───────────────────────────────────────────────────────
+async function saveGoal() {
+  const t = document.getElementById('g-title').value.trim();
+  if (!t) { toast('Bitte Titel eingeben'); return; }
+  const data = { title:t, metric:document.getElementById('g-metric').value.trim(), targetDate:document.getElementById('g-date').value||null, completed:false, createdAt:firebase.firestore.FieldValue.serverTimestamp() };
+  const ref = await gref().add(data);
+  goals.push({id:ref.id,...data});
+  closeM('goal'); renderGoals(); toast('🎯 Ziel gesetzt!');
+}
+async function deleteGoal(id) { await gref().doc(id).delete(); goals=goals.filter(g=>g.id!==id); renderGoals(); }
+async function completeGoal(id) { await gref().doc(id).update({completed:true}); goals.find(g=>g.id===id).completed=true; renderGoals(); confetti(); toast('🎉 Herzlichen Glückwunsch!'); }
+
+// ── CHECK-INS ───────────────────────────────────────────────────────
+async function saveMorning() {
+  const v = document.getElementById('morning-inp').value.trim();
+  await dref().doc(TD).set({morningIntention:v,date:TD},{merge:true});
+  todayLog.morningIntention=v;
+  document.getElementById('morning-prev').textContent=`"${v}"`;
+  closeM('morning'); toast('🌅 Schönen Tag!');
+}
+
+function setR(r) { selRating=r; document.querySelectorAll('.rbtn').forEach((b,i)=>b.classList.toggle('on',i<r)); }
+
+async function saveEvening() {
+  const note = document.getElementById('evening-note').value.trim();
+  await dref().doc(TD).set({eveningRating:selRating,eveningNote:note,date:TD},{merge:true});
+  closeM('evening'); toast('🌙 Gute Nacht!');
+}
+
+// ── DETAIL MODAL ────────────────────────────────────────────────────
+async function openDetail(id) {
+  const h=habits.find(h=>h.id===id); if(!h) return;
+  document.getElementById('d-icon').textContent = h.icon||'⭐';
+  document.getElementById('d-name').textContent = h.name;
+  document.getElementById('d-cue').textContent  = h.cue||'';
+  document.getElementById('d-streak').textContent = h.streak||0;
+  document.getElementById('d-best').textContent   = h.longestStreak||0;
+  document.getElementById('d-rate').textContent   = '...';
+  const arc = Math.min(100,Math.round((h.totalCompletions||0)/66*100));
+  document.getElementById('d-arc-n').textContent = Math.min(h.totalCompletions||0,66);
+  document.getElementById('d-arc-fill').style.width = arc+'%';
+  const tw = document.getElementById('d-tiny-wrap');
+  tw.style.display = h.twoMinuteVersion?'block':'none';
+  if(h.twoMinuteVersion) document.getElementById('d-tiny').textContent=h.twoMinuteVersion;
+  const bw = document.getElementById('d-bundle-wrap');
+  bw.style.display = h.temptationBundle?'block':'none';
+  if(h.temptationBundle) document.getElementById('d-bundle').textContent=h.temptationBundle;
+  document.getElementById('del-btn').onclick = ()=>deleteHabit(id);
+  openM('detail');
+  // async 30d rate (use last 10 days to stay within Firestore 'in' limit)
+  const d10=[]; for(let i=9;i>=0;i--){const d=new Date(TODAY);d.setDate(d.getDate()-i);d10.push(d.toISOString().split('T')[0]);}
+  cref().where('date','in',d10).where('habitId','==',id).get().then(s=>{
+    const n=s.docs.filter(d=>d.data().completed).length;
+    document.getElementById('d-rate').textContent=Math.round(n/10*100)+'%';
+  });
+}
+
+// ── AI COACH ────────────────────────────────────────────────────────
+async function askCoach() {
+  const q = document.getElementById('coach-inp').value.trim();
+  if (!q) return;
+  const key = localStorage.getItem('hf_claude');
+  const resp = document.getElementById('coach-resp');
+  resp.style.display='block';
+  resp.innerHTML = '<em style="color:var(--t3)">Denkt nach…</em>';
+
+  if (!key) {
+    // Fallback: structured suggestion without API
+    resp.innerHTML = buildLocalSuggestion(q);
+    return;
+  }
+
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{ 'x-api-key':key, 'anthropic-version':'2023-06-01', 'content-type':'application/json', 'anthropic-dangerous-direct-browser-access':'true' },
+      body:JSON.stringify({
+        model:'claude-haiku-4-5-20251001',
+        max_tokens:400,
+        messages:[{role:'user',content:`Du bist ein Habit Coach basierend auf Atomic Habits und BJ Fogg. Der Nutzer sagt: "${q}". Antworte auf Deutsch mit: 1) Eine konkrete 2-Minuten-Version dieser Gewohnheit, 2) Einen passenden Cue/Auslöser, 3) Eine kurze Identitätsaussage (Ich bin jemand der...). Halte es kurz und prägnant.`}]
+      })
+    });
+    const data = await r.json();
+    resp.innerHTML = data.content?.[0]?.text?.replace(/\n/g,'<br>') || 'Fehler beim Laden.';
+  } catch(e) {
+    resp.innerHTML = buildLocalSuggestion(q);
+  }
+}
+
+function buildLocalSuggestion(q) {
+  return `<strong>2-Minuten-Version:</strong> Fang mit der kleinsten möglichen Version an — nur 2 Minuten.<br><br>
+  <strong>Cue/Auslöser:</strong> Verbinde diese Gewohnheit mit einer bestehenden Routine (z.B. nach dem Morgenkaffee).<br><br>
+  <strong>Identität:</strong> "Ich bin jemand, der täglich kleine Schritte macht."<br><br>
+  <em style="color:var(--t3);font-size:12px">Für KI-Antworten Claude API Key in Einstellungen (⚙️) eingeben.</em>`;
+}
+
+// ── SETTINGS ─────────────────────────────────────────────────────────
+function openM_settings() {
+  const k = localStorage.getItem('hf_claude')||'';
+  document.getElementById('claude-key').value=k;
+  openM('settings');
+}
+
+function saveSettings() {
+  const k = document.getElementById('claude-key').value.trim();
+  if(k) localStorage.setItem('hf_claude',k);
+  else  localStorage.removeItem('hf_claude');
+  closeM('settings-m'); toast('Gespeichert ✓');
+}
+
+// ── NAVIGATION ─────────────────────────────────────────────────────
+const VIEW_MAP = {t:'vt', h:'vh', g:'vg', s:'vs'};
+
+function nav(v) {
+  if (v===curView) return;
+  const prev=document.getElementById(VIEW_MAP[curView]);
+  const next=document.getElementById(VIEW_MAP[v]);
+  prev.classList.remove('active'); prev.classList.add('prev');
+  next.classList.add('active');
+  setTimeout(()=>prev.classList.remove('prev'),320);
+  curView=v;
+  if(v==='s') renderStats();
+}
+
+// ── MODAL HELPERS ───────────────────────────────────────────────────
+const MODAL_IDS = {habit:'habit-m',morning:'morning-m',evening:'evening-m',detail:'detail-m',goal:'goal-m',settings:'settings-m'};
+function openM(k) {
+  if(k==='settings') openM_settings();
+  else document.getElementById(MODAL_IDS[k]||k).classList.add('open');
+}
+function closeM(k) { document.getElementById(MODAL_IDS[k]||k).classList.remove('open'); }
+function mclick(e,id) { if(e.target.id===id) closeM(id); }
+
+// ── FORM HELPERS ────────────────────────────────────────────────────
+function selType(t) {
+  selType_=t;
+  document.getElementById('tb-b').className='ttb '+(t==='build'?'sb':'');
+  document.getElementById('tb-k').className='ttb '+(t==='break'?'sk':'');
+  selIcon_ = t==='build'?'📚':'📱';
+  buildIconGrid();
+}
+
+function selIcon(ic,btn) {
+  selIcon_=ic;
+  document.querySelectorAll('.ibtn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+}
+
+// ── CONFETTI ────────────────────────────────────────────────────────
+function confetti() {
+  const cols=['#7c6ff7','#2dd4a0','#f0b429','#fc6a6a','#a855f7'];
+  for(let i=0;i<14;i++){
+    const el=document.createElement('div');
+    el.className='cp';
+    el.style.cssText=`left:${25+Math.random()*50}%;top:${20+Math.random()*40}%;background:${cols[Math.floor(Math.random()*5)]};animation-duration:${.8+Math.random()*.7}s;animation-delay:${Math.random()*.2}s`;
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(),1600);
+  }
+}
+
+// ── TOAST ────────────────────────────────────────────────────────────
+let tT;
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('on');
+  clearTimeout(tT); tT=setTimeout(()=>el.classList.remove('on'),2600);
+}
+
+// ── UTILS ────────────────────────────────────────────────────────────
+function show(id)  { document.getElementById(id).classList.remove('hidden'); }
+function hide(id)  { document.getElementById(id).classList.add('hidden'); }
+function showEl(id){ document.getElementById(id).style.display='flex'; }
+
+// ── BOOT ─────────────────────────────────────────────────────────────
+window.addEventListener('load',()=>{
+  const saved=localStorage.getItem('hf_fb');
+  if(saved) { try { initFB(JSON.parse(saved)); } catch(e){ showEl('setup'); } }
+  else showEl('setup');
+});
+</script>
+</body>
+</html>
