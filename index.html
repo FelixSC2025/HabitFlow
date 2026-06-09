@@ -830,7 +830,7 @@ function loginGoogle() {
   provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
   auth.signInWithPopup(provider).then(result => {
     const token = result.credential?.accessToken;
-    if (token) localStorage.setItem('hf_cal_token', token);
+    if (token) storeCalToken(token);
   }).catch(e => toast(e.message));
 }
 function loginAnon()   { auth.signInAnonymously().catch(e=>toast(e.message)); }
@@ -890,6 +890,9 @@ async function startApp() {
   checkMissBanner();
   checkWeeklyReview();
   initTickTick();
+  if (localStorage.getItem('hf_cal_token') && !localStorage.getItem('hf_cal_expiry')) {
+    localStorage.setItem('hf_cal_expiry', String(Date.now() + 3540 * 1000));
+  }
   if (localStorage.getItem('hf_cal_token') || localStorage.getItem('hf_cal_connected')) loadCalendarEvents();
   scheduleNotifications();
 }
@@ -1141,6 +1144,28 @@ async function renderStats() {
 }
 
 // ── CALENDAR ────────────────────────────────────────────────────────
+function storeCalToken(token) {
+  localStorage.setItem('hf_cal_token', token);
+  localStorage.setItem('hf_cal_expiry', String(Date.now() + 3540 * 1000)); // 59 min
+}
+
+function isCalTokenExpired() {
+  return Date.now() >= parseInt(localStorage.getItem('hf_cal_expiry') || '0') - 60000;
+}
+
+async function silentCalRefresh() {
+  if (!auth?.currentUser) return false;
+  try {
+    const p = new firebase.auth.GoogleAuthProvider();
+    p.addScope('https://www.googleapis.com/auth/calendar.readonly');
+    p.setCustomParameters({ prompt: 'none' });
+    const r = await auth.signInWithPopup(p);
+    const t = r.credential?.accessToken;
+    if (t) { storeCalToken(t); return true; }
+  } catch(e) {}
+  return false;
+}
+
 async function loadCalendarEvents(tryRefresh = true) {
   let token = localStorage.getItem('hf_cal_token');
   if (!token) {
@@ -1215,16 +1240,23 @@ async function loadCalendarEvents(tryRefresh = true) {
   if (btn) btn.innerHTML = '⟳';
 }
 
-function refreshCalendar() { loadCalendarEvents(); }
+function refreshCalendar() {
+  if (isCalTokenExpired() && localStorage.getItem('hf_cal_connected')) {
+    silentCalRefresh().then(ok => ok ? loadCalendarEvents(false) : loadCalendarEvents());
+  } else {
+    loadCalendarEvents();
+  }
+}
 
 async function tryRefreshCalToken() {
   if (!auth?.currentUser) return false;
   try {
     const p = new firebase.auth.GoogleAuthProvider();
     p.addScope('https://www.googleapis.com/auth/calendar.readonly');
+    p.setCustomParameters({ prompt: 'none' });
     const r = await auth.signInWithPopup(p);
     const t = r.credential?.accessToken;
-    if (t) { localStorage.setItem('hf_cal_token', t); return true; }
+    if (t) { storeCalToken(t); return true; }
   } catch(e) {}
   return false;
 }
@@ -1236,7 +1268,7 @@ function connectCalendar() {
   auth.signInWithPopup(provider).then(result => {
     const token = result.credential?.accessToken;
     if (token) {
-      localStorage.setItem('hf_cal_token', token);
+      storeCalToken(token);
       localStorage.setItem('hf_cal_connected', '1');
       loadCalendarEvents();
       toast('✅ Kalender verbunden!');
@@ -2195,7 +2227,13 @@ function nav(v) {
   setTimeout(()=>prev.classList.remove('prev'),320);
   curView=v;
   if(v==='s') renderStats();
-  if(v==='c') loadCalendarEvents();
+  if(v==='c') {
+    if(isCalTokenExpired() && localStorage.getItem('hf_cal_connected')) {
+      silentCalRefresh().then(ok => ok ? loadCalendarEvents(false) : loadCalendarEvents());
+    } else {
+      loadCalendarEvents();
+    }
+  }
   if(v==='g') { if(localStorage.getItem('hf_tt_token')&&!ttProjectData.length) loadTTData(); else renderTTProjects(); }
 }
 
