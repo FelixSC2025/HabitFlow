@@ -1,0 +1,16 @@
+# Dependencies
+functions/node_modules/
+
+# Firebase lokaler Cache
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Lokale Env-Overrides
+functions/.env.local
+functions/.secret.local
+
+# OS
+.DS_Store
+Thumbs.db
