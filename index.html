@@ -582,11 +582,22 @@ let selRating = 0;
 let editId = null;
 let curView = 't';
 
+// ── LOCAL STORAGE HELPERS ──────────────────────────────────────────
+function saveLocal(key, data) {
+  try { localStorage.setItem('hf_' + key, JSON.stringify(data)); } catch(e) {}
+}
+function loadLocal(key) {
+  try { return JSON.parse(localStorage.getItem('hf_' + key)); } catch(e) { return null; }
+}
+
 // ── FIREBASE ───────────────────────────────────────────────────────
 function initFB(cfg) {
   try {
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     db = firebase.firestore();
+    db.enablePersistence({synchronizeTabs: true}).catch(err => {
+      if (err.code !== 'unimplemented') toast('Offline-Cache nicht verfügbar');
+    });
     auth = firebase.auth();
     auth.onAuthStateChanged(onAuth);
   } catch(e) { toast('Firebase-Fehler: ' + e.message); }
@@ -683,14 +694,22 @@ function buildIconGrid() {
 
 // ── DATA ───────────────────────────────────────────────────────────
 async function loadHabits() {
-  const s = await href().orderBy('createdAt','asc').get();
+  const cached = loadLocal('habits');
+  if (cached) { habits = cached; renderAll(); }
+  const s = await href().orderBy('createdAt','asc').get().catch(e => { toast('Fehler beim Laden: ' + e.message); return null; });
+  if (!s) return;
   habits = s.docs.map(d=>({id:d.id,...d.data()}));
+  saveLocal('habits', habits);
   renderAll();
 }
 
 async function loadGoals() {
-  const s = await gref().orderBy('createdAt','asc').get();
+  const cached = loadLocal('goals');
+  if (cached) { goals = cached; renderGoals(); }
+  const s = await gref().orderBy('createdAt','asc').get().catch(e => null);
+  if (!s) return;
   goals = s.docs.map(d=>({id:d.id,...d.data()}));
+  saveLocal('goals', goals);
   renderGoals();
 }
 
@@ -903,25 +922,29 @@ async function saveHabit() {
     streak:0, longestStreak:0, totalCompletions:0
   };
 
-  if (editId) {
-    delete data.streak; delete data.longestStreak; delete data.totalCompletions;
-    await href().doc(editId).update(data);
-    const i=habits.findIndex(h=>h.id===editId);
-    if(i>=0) Object.assign(habits[i],data);
-  } else {
-    data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-    const ref = await href().add(data);
-    habits.push({id:ref.id,...data});
-  }
+  try {
+    if (editId) {
+      delete data.streak; delete data.longestStreak; delete data.totalCompletions;
+      await href().doc(editId).update(data);
+      const i=habits.findIndex(h=>h.id===editId);
+      if(i>=0) Object.assign(habits[i],data);
+    } else {
+      data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      const ref = await href().add(data);
+      habits.push({id:ref.id,...data});
+    }
+  } catch(e) { toast('Speicherfehler: ' + e.message); return; }
 
+  saveLocal('habits', habits);
   closeM('habit'); renderAll();
   toast(editId?'✅ Aktualisiert!':'✅ Gewohnheit hinzugefügt!');
 }
 
 async function deleteHabit(id) {
   if (!confirm('Gewohnheit wirklich löschen?')) return;
-  await href().doc(id).delete();
+  try { await href().doc(id).delete(); } catch(e) { toast('Fehler: ' + e.message); return; }
   habits = habits.filter(h=>h.id!==id);
+  saveLocal('habits', habits);
   closeM('detail-m'); renderAll(); toast('Gelöscht');
 }
 
@@ -930,12 +953,21 @@ async function saveGoal() {
   const t = document.getElementById('g-title').value.trim();
   if (!t) { toast('Bitte Titel eingeben'); return; }
   const data = { title:t, metric:document.getElementById('g-metric').value.trim(), targetDate:document.getElementById('g-date').value||null, completed:false, createdAt:firebase.firestore.FieldValue.serverTimestamp() };
-  const ref = await gref().add(data);
-  goals.push({id:ref.id,...data});
+  try {
+    const ref = await gref().add(data);
+    goals.push({id:ref.id,...data});
+  } catch(e) { toast('Speicherfehler: ' + e.message); return; }
+  saveLocal('goals', goals);
   closeM('goal'); renderGoals(); toast('🎯 Ziel gesetzt!');
 }
-async function deleteGoal(id) { await gref().doc(id).delete(); goals=goals.filter(g=>g.id!==id); renderGoals(); }
-async function completeGoal(id) { await gref().doc(id).update({completed:true}); goals.find(g=>g.id===id).completed=true; renderGoals(); confetti(); toast('🎉 Herzlichen Glückwunsch!'); }
+async function deleteGoal(id) {
+  try { await gref().doc(id).delete(); } catch(e) { toast('Fehler: ' + e.message); return; }
+  goals=goals.filter(g=>g.id!==id); saveLocal('goals', goals); renderGoals();
+}
+async function completeGoal(id) {
+  try { await gref().doc(id).update({completed:true}); } catch(e) { toast('Fehler: ' + e.message); return; }
+  goals.find(g=>g.id===id).completed=true; saveLocal('goals', goals); renderGoals(); confetti(); toast('🎉 Herzlichen Glückwunsch!');
+}
 
 // ── CHECK-INS ───────────────────────────────────────────────────────
 async function saveMorning() {
