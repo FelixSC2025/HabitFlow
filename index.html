@@ -1122,6 +1122,38 @@ function calColor(id) {
   return map[String(id)] || 'var(--p)';
 }
 
+function renderCalEvent(ev) {
+  const allDay   = !ev.start.dateTime;
+  const timeStr  = allDay ? 'Ganztägig' : fmtTime(ev.start.dateTime) + '–' + fmtTime(ev.end.dateTime);
+  const nowCls   = eventIsNow(ev) ? 'now' : '';
+  const pastCls  = eventIsPast(ev) ? 'past' : '';
+  const color    = ev._calColor || (ev.colorId ? calColor(ev.colorId) : 'var(--p)');
+  const loc      = ev.location ? `<div class="cal-loc">📍 ${ev.location.substring(0,50)}</div>` : '';
+  const nowBadge = eventIsNow(ev) ? `<span style="font-size:10px;font-weight:700;color:var(--p);text-transform:uppercase;margin-left:6px">Jetzt</span>` : '';
+  return `<div class="cal-event ${nowCls} ${pastCls}">
+    <div class="cal-event-bar" style="background:${color}"></div>
+    <div style="flex:1;min-width:0">
+      <div class="cal-time" style="min-width:0">${timeStr}${nowBadge}</div>
+      <div class="cal-title">${ev.summary || '(Kein Titel)'}</div>
+      ${loc}
+    </div>
+  </div>`;
+}
+
+function renderFreeWindow(win) {
+  const start = win.start.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+  const end   = win.end.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+  const { timeLabel, count } = matchWindowToHabits(win);
+  const sub = count > 0
+    ? `${count} ${timeLabel}-Gewohnheit${count > 1 ? 'en' : ''} noch offen`
+    : `Freies Zeitfenster`;
+  return `<div class="time-window">
+    <div class="time-window-badge">Frei · ${fmtDuration(win.duration)}</div>
+    <div class="time-window-text">🕐 ${start}–${end}</div>
+    <div class="time-window-sub">${sub}</div>
+  </div>`;
+}
+
 function renderCalendar(events) {
   const el = document.getElementById('cal-content');
   if (!el) return;
@@ -1132,24 +1164,27 @@ function renderCalendar(events) {
 
   if (!todayEvs.length) {
     html += `<div class="empty" style="padding:28px 24px"><div class="ei">🎯</div><div class="et">Freier Tag!</div><div class="ed">Perfekt für deine Gewohnheiten.</div></div>`;
+    // Show free windows below the empty state
+    const windows = findFreeWindows(events);
+    windows.slice(0, 4).forEach(win => { html += renderFreeWindow(win); });
   } else {
-    html += todayEvs.map(ev => {
-      const allDay   = !ev.start.dateTime;
-      const timeStr  = allDay ? 'Ganztägig' : fmtTime(ev.start.dateTime) + '–' + fmtTime(ev.end.dateTime);
-      const nowCls   = eventIsNow(ev) ? 'now' : '';
-      const pastCls  = eventIsPast(ev) ? 'past' : '';
-      const color    = ev._calColor || (ev.colorId ? calColor(ev.colorId) : 'var(--p)');
-      const loc      = ev.location ? `<div class="cal-loc">📍 ${ev.location.substring(0,50)}</div>` : '';
-      const nowBadge = eventIsNow(ev) ? `<span style="font-size:10px;font-weight:700;color:var(--p);text-transform:uppercase;margin-left:6px">Jetzt</span>` : '';
-      return `<div class="cal-event ${nowCls} ${pastCls}">
-        <div class="cal-event-bar" style="background:${color}"></div>
-        <div style="flex:1;min-width:0">
-          <div class="cal-time" style="min-width:0">${timeStr}${nowBadge}</div>
-          <div class="cal-title">${ev.summary || '(Kein Titel)'}</div>
-          ${loc}
-        </div>
-      </div>`;
-    }).join('');
+    const allDayEvs  = todayEvs.filter(ev => !ev.start.dateTime);
+    const timedEvs   = todayEvs.filter(ev =>  ev.start.dateTime).sort((a, b) => new Date(a.start.dateTime) - new Date(b.start.dateTime));
+    const windows    = findFreeWindows(events);
+
+    // All-day events first
+    allDayEvs.forEach(ev => { html += renderCalEvent(ev); });
+
+    // Merge timed events + free windows into one sorted timeline
+    const timeline = [
+      ...timedEvs.map(ev  => ({ type: 'event',  item: ev,  time: new Date(ev.start.dateTime) })),
+      ...windows.map(win  => ({ type: 'window', item: win, time: win.start }))
+    ].sort((a, b) => a.time - b.time);
+
+    timeline.forEach(entry => {
+      if (entry.type === 'event')  html += renderCalEvent(entry.item);
+      else                         html += renderFreeWindow(entry.item);
+    });
   }
 
   // ── Sektion B: Diese Woche ────────────────────────────────────
@@ -1183,27 +1218,6 @@ function renderCalendar(events) {
       });
       if (dayEvs.length > 3) html += `<div style="text-align:right;padding:0 20px 6px;font-size:12px;color:var(--t2)">+ ${dayEvs.length - 3} weitere</div>`;
     });
-  }
-
-  // ── Sektion C: Habit-Zeitfenster ──────────────────────────────
-  html += `<div class="sec">HABIT-ZEITFENSTER ⭐</div>`;
-  const windows = findFreeWindows(events);
-  if (!windows.length) {
-    html += `<div class="card" style="text-align:center;color:var(--t2);font-size:14px;padding:20px">Kein freies Fenster heute (mind. 20 Min.)</div>`;
-  } else {
-    html += windows.slice(0, 4).map(win => {
-      const start = win.start.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
-      const end   = win.end.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
-      const { timeLabel, count } = matchWindowToHabits(win);
-      const sub = count > 0
-        ? `${count} ${timeLabel}-Gewohnheit${count > 1 ? 'en' : ''} noch offen`
-        : `Freies Zeitfenster`;
-      return `<div class="time-window">
-        <div class="time-window-badge">Frei · ${fmtDuration(win.duration)}</div>
-        <div class="time-window-text">🕐 ${start}–${end}</div>
-        <div class="time-window-sub">${sub}</div>
-      </div>`;
-    }).join('');
   }
 
   html += '<div style="height:8px"></div>';
