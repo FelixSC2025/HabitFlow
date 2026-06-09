@@ -985,28 +985,54 @@ async function loadCalendarEvents() {
 
   const todayStart = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate(), 0, 0, 0);
   const weekEnd    = new Date(TODAY.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const headers    = { Authorization: `Bearer ${token}` };
 
   try {
-    const r = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/primary/events` +
-      `?timeMin=${todayStart.toISOString()}&timeMax=${weekEnd.toISOString()}` +
-      `&singleEvents=true&orderBy=startTime&maxResults=50`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    if (r.status === 401) {
+    // 1. Alle Kalender des Users laden (inkl. Outlook, Feiertage, etc.)
+    const listR = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', { headers });
+    if (listR.status === 401) {
       localStorage.removeItem('hf_cal_token');
       if (btn) btn.innerHTML = '⟳';
       renderCalendarNoAuth();
       return;
     }
-    const data = await r.json();
-    if (!r.ok) {
-      const msg = data?.error?.message || `API-Fehler ${r.status}`;
-      renderCalendarApiError(msg, r.status);
+    const listData = await listR.json();
+    if (!listR.ok) {
+      renderCalendarApiError(listData?.error?.message || `API-Fehler ${listR.status}`, listR.status);
       if (btn) btn.innerHTML = '⟳';
       return;
     }
-    renderCalendar(data.items || []);
+
+    // 2. Nur sichtbare/aktivierte Kalender
+    const cals = (listData.items || []).filter(c => c.selected !== false);
+
+    // 3. Events aller Kalender parallel laden
+    const results = await Promise.all(cals.map(async cal => {
+      try {
+        const r = await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events` +
+          `?timeMin=${todayStart.toISOString()}&timeMax=${weekEnd.toISOString()}` +
+          `&singleEvents=true&orderBy=startTime&maxResults=50`,
+          { headers }
+        );
+        if (!r.ok) return [];
+        const data = await r.json();
+        return (data.items || []).map(ev => ({
+          ...ev,
+          _calColor: cal.backgroundColor || 'var(--p)',
+          _calName:  cal.summary
+        }));
+      } catch(e) { return []; }
+    }));
+
+    // 4. Zusammenführen & nach Startzeit sortieren
+    const allEvents = results.flat().sort((a, b) => {
+      const as = a.start.dateTime || a.start.date || '';
+      const bs = b.start.dateTime || b.start.date || '';
+      return as.localeCompare(bs);
+    });
+
+    renderCalendar(allEvents);
   } catch(e) {
     renderCalendarError();
   }
@@ -1112,7 +1138,7 @@ function renderCalendar(events) {
       const timeStr  = allDay ? 'Ganztägig' : fmtTime(ev.start.dateTime) + '–' + fmtTime(ev.end.dateTime);
       const nowCls   = eventIsNow(ev) ? 'now' : '';
       const pastCls  = eventIsPast(ev) ? 'past' : '';
-      const color    = ev.colorId ? calColor(ev.colorId) : 'var(--p)';
+      const color    = ev._calColor || (ev.colorId ? calColor(ev.colorId) : 'var(--p)');
       const loc      = ev.location ? `<div class="cal-loc">📍 ${ev.location.substring(0,50)}</div>` : '';
       const nowBadge = eventIsNow(ev) ? `<span style="font-size:10px;font-weight:700;color:var(--p);text-transform:uppercase;margin-left:6px">Jetzt</span>` : '';
       return `<div class="cal-event ${nowCls} ${pastCls}">
