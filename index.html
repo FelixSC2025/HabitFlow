@@ -1012,7 +1012,12 @@ async function syncToCloud(items, collRef) {
 
 async function loadHabits() {
   const cached = loadLocal('habits');
-  if (cached && cached.length) { habits = cached; renderAll(); }
+  if (cached && cached.length) {
+    habits = cached;
+    const cachedComp = loadLocal('todayComp_' + TD);
+    if (cachedComp) todayComp = cachedComp;
+    renderAll();
+  }
   const s = await href().orderBy('createdAt','asc').get().catch(e => { toast('Fehler: ' + e.message); return null; });
   if (!s) return;
   const remote = s.docs.map(d=>({id:d.id,...d.data()}));
@@ -1050,6 +1055,7 @@ async function loadToday() {
   const s = await cref().where('date','==',TD).get();
   todayComp = {};
   s.docs.forEach(d=>{ const x=d.data(); todayComp[x.habitId]=x.completed; });
+  saveLocal('todayComp_' + TD, todayComp);
   const ld = await dref().doc(TD).get();
   todayLog = ld.exists ? ld.data() : {};
   if (todayLog.morningIntention) document.getElementById('morning-prev').textContent = `"${todayLog.morningIntention}"`;
@@ -1071,6 +1077,7 @@ async function toggle(id) {
   const was = todayComp[id]||false;
   const now = !was;
   todayComp[id] = now;
+  saveLocal('todayComp_' + TD, todayComp);
   renderAll();
   if (now) confetti();
   await cref().doc(`${TD}_${id}`).set({ habitId:id, date:TD, completed:now, ts:firebase.firestore.FieldValue.serverTimestamp() });
@@ -1355,7 +1362,7 @@ function connectCalendar() {
   const provider = new firebase.auth.GoogleAuthProvider();
   provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
   provider.addScope('https://www.googleapis.com/auth/calendar.events');
-  provider.setCustomParameters({ prompt: 'consent' });
+  provider.setCustomParameters({ prompt: 'select_account' });
   auth.signInWithPopup(provider).then(result => {
     const token = result.credential?.accessToken;
     if (token) {
