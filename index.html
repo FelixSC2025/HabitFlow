@@ -112,6 +112,7 @@
   .ttb{padding:10px;border-radius:7px;border:none;background:none;color:var(--t2);font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;font-family:inherit}
   .ttb.sb{background:rgba(45,212,160,.15);color:var(--ok)}
   .ttb.sk{background:rgba(252,106,106,.15);color:var(--err)}
+  .ttb.sr{background:rgba(255,180,0,.15);color:var(--warn)}
 
   /* MODAL */
   .mwrap{position:absolute;inset:0;background:rgba(0,0,0,.75);z-index:100;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .22s}
@@ -490,10 +491,38 @@
       <label class="lbl">Name</label>
       <input id="h-name" class="inp" placeholder="z.B. 20 Minuten lesen" maxlength="70">
     </div>
-    <div class="fg">
-      <label class="lbl">2-Minuten-Version (Einstieg)</label>
-      <input id="h-tiny" class="inp" placeholder='z.B. "Buch aufschlagen"' maxlength="100">
-      <div class="hint">Fang klein an — Konsistenz kommt vor Umfang.</div>
+    <!-- Break-only fields -->
+    <div id="break-fields" style="display:none">
+      <div class="fg">
+        <label class="lbl">Ziel</label>
+        <div class="type-toggle">
+          <button class="ttb sk" id="tbg-quit" onclick="selBreakGoal('quit')">🛑 Aufhören</button>
+          <button class="ttb" id="tbg-reduce" onclick="selBreakGoal('reduce')">📉 Reduzieren</button>
+        </div>
+      </div>
+      <div class="fg">
+        <label class="lbl">Persönliche Motivation</label>
+        <textarea id="h-motivation" class="inp" placeholder="Warum willst du das ändern?" maxlength="200"></textarea>
+        <div class="hint">Dein Warum — macht dich widerstandsfähiger bei Rückfällen.</div>
+      </div>
+      <div class="fg">
+        <label class="lbl">Ersatzverhalten</label>
+        <input id="h-replacement" class="inp" placeholder='z.B. "Spaziergang statt Snacken"' maxlength="100">
+        <div class="hint">Was tust du stattdessen, wenn der Drang kommt?</div>
+      </div>
+    </div>
+    <!-- Build-only fields -->
+    <div id="build-fields">
+      <div class="fg">
+        <label class="lbl">2-Minuten-Version (Einstieg)</label>
+        <input id="h-tiny" class="inp" placeholder='z.B. "Buch aufschlagen"' maxlength="100">
+        <div class="hint">Fang klein an — Konsistenz kommt vor Umfang.</div>
+      </div>
+      <div class="fg">
+        <label class="lbl">Temptation Bundling (optional)</label>
+        <input id="h-bundle" class="inp" placeholder='z.B. "Nur meinen Lieblings-Podcast beim Sport"' maxlength="100">
+        <div class="hint">Paare die Gewohnheit mit etwas Schönem.</div>
+      </div>
     </div>
     <div class="fg">
       <label class="lbl">Cue / Auslöser</label>
@@ -503,11 +532,6 @@
       <label class="lbl">Erinnerungszeit (optional)</label>
       <input id="h-notify" class="inp" type="time" placeholder="HH:MM">
       <div class="hint">Tägliche Push-Benachrichtigung zu dieser Uhrzeit.</div>
-    </div>
-    <div class="fg">
-      <label class="lbl">Temptation Bundling (optional)</label>
-      <input id="h-bundle" class="inp" placeholder='z.B. "Nur meinen Lieblings-Podcast beim Sport"' maxlength="100">
-      <div class="hint">Paare die Gewohnheit mit etwas Schönem.</div>
     </div>
     <div style="display:flex;gap:10px">
       <button class="btn btn-g" style="flex:1" onclick="closeM('habit-m')">Abbrechen</button>
@@ -567,6 +591,20 @@
     <div id="d-bundle-wrap" style="background:var(--s2);border-radius:var(--rs);padding:12px;margin-bottom:12px;display:none">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--warn);margin-bottom:4px">🎵 KOPPELUNG</div>
       <div id="d-bundle" style="font-size:13px;color:var(--t2)"></div>
+    </div>
+    <div id="d-break-wrap" style="display:none">
+      <div id="d-break-goal-wrap" style="background:var(--s2);border-radius:var(--rs);padding:12px;margin-bottom:8px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--err);margin-bottom:4px">🎯 ZIEL</div>
+        <div id="d-break-goal" style="font-size:13px;color:var(--t2)"></div>
+      </div>
+      <div id="d-motivation-wrap" style="background:var(--s2);border-radius:var(--rs);padding:12px;margin-bottom:8px;display:none">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--p);margin-bottom:4px">💬 MOTIVATION</div>
+        <div id="d-motivation" style="font-size:13px;color:var(--t2);line-height:1.5"></div>
+      </div>
+      <div id="d-replacement-wrap" style="background:var(--s2);border-radius:var(--rs);padding:12px;margin-bottom:12px;display:none">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--ok);margin-bottom:4px">🔄 ERSATZVERHALTEN</div>
+        <div id="d-replacement" style="font-size:13px;color:var(--t2)"></div>
+      </div>
     </div>
     <div class="arc">
       <div class="arc-lbl"><span>66-Tage-Formationsfenster</span><strong><span id="d-arc-n">0</span>/66</strong></div>
@@ -824,7 +862,7 @@ const FCM_VAPID_KEY = 'BMn5qqZWjjAwto5duvZtHUbJhMpkEzdIM4xIC8S2rnoWzyWeKUSkRiWYE
 let habits = [], goals = [];
 let todayComp = {}, todayLog = {};
 let obArea = null, obChal = null;
-let selType_ = 'build', selIcon_ = '📚';
+let selType_ = 'build', selIcon_ = '📚', selBreakGoal_ = 'quit';
 let selRating = 0;
 let editId = null;
 let curView = 't';
@@ -2074,10 +2112,14 @@ async function initTickTick() {
 function openAddHabit() {
   editId=null;
   document.getElementById('hm-title').textContent='Gewohnheit hinzufügen';
-  ['h-name','h-tiny','h-cue','h-bundle','h-notify'].forEach(id=>document.getElementById(id).value='');
-  selType_='build'; selIcon_='📚';
+  ['h-name','h-tiny','h-cue','h-bundle','h-notify','h-motivation','h-replacement'].forEach(id=>document.getElementById(id).value='');
+  selType_='build'; selIcon_='📚'; selBreakGoal_='quit';
   document.getElementById('tb-b').className='ttb sb';
   document.getElementById('tb-k').className='ttb';
+  document.getElementById('break-fields').style.display='none';
+  document.getElementById('build-fields').style.display='block';
+  document.getElementById('tbg-quit').className='ttb sk';
+  document.getElementById('tbg-reduce').className='ttb';
   buildIconGrid();
   openM('habit');
 }
@@ -2100,13 +2142,18 @@ async function saveHabit() {
   const notifyAt = document.getElementById('h-notify').value.trim();
   const data = {
     name, type:selType_, icon:selIcon_,
-    twoMinuteVersion: document.getElementById('h-tiny').value.trim(),
+    twoMinuteVersion: selType_==='build' ? document.getElementById('h-tiny').value.trim() : '',
     cue:              document.getElementById('h-cue').value.trim(),
     timeOfDay:        'any',
     notifyAt:         notifyAt || null,
-    temptationBundle: document.getElementById('h-bundle').value.trim(),
+    temptationBundle: selType_==='build' ? document.getElementById('h-bundle').value.trim() : '',
     streak:0, longestStreak:0, totalCompletions:0
   };
+  if (selType_==='break') {
+    data.breakGoal   = selBreakGoal_;
+    data.motivation  = document.getElementById('h-motivation').value.trim();
+    data.replacement = document.getElementById('h-replacement').value.trim();
+  }
 
   try {
     if (editId) {
@@ -2191,6 +2238,18 @@ async function openDetail(id) {
   const bw = document.getElementById('d-bundle-wrap');
   bw.style.display = h.temptationBundle?'block':'none';
   if(h.temptationBundle) document.getElementById('d-bundle').textContent=h.temptationBundle;
+  const brw = document.getElementById('d-break-wrap');
+  brw.style.display = h.type==='break'?'block':'none';
+  if(h.type==='break') {
+    const goalLabels = {quit:'🛑 Komplett aufhören', reduce:'📉 Reduzieren'};
+    document.getElementById('d-break-goal').textContent = goalLabels[h.breakGoal]||'–';
+    const mw = document.getElementById('d-motivation-wrap');
+    mw.style.display = h.motivation?'block':'none';
+    if(h.motivation) document.getElementById('d-motivation').textContent=h.motivation;
+    const rw = document.getElementById('d-replacement-wrap');
+    rw.style.display = h.replacement?'block':'none';
+    if(h.replacement) document.getElementById('d-replacement').textContent=h.replacement;
+  }
   document.getElementById('del-btn').onclick = ()=>deleteHabit(id);
   openM('detail');
   // async 30d rate (use last 10 days to stay within Firestore 'in' limit)
@@ -2443,6 +2502,13 @@ function selType(t) {
   document.getElementById('tb-k').className='ttb '+(t==='break'?'sk':'');
   selIcon_ = t==='build'?'📚':'📱';
   buildIconGrid();
+  document.getElementById('break-fields').style.display = t==='break'?'block':'none';
+  document.getElementById('build-fields').style.display = t==='build'?'block':'none';
+}
+function selBreakGoal(g) {
+  selBreakGoal_=g;
+  document.getElementById('tbg-quit').className='ttb '+(g==='quit'?'sk':'');
+  document.getElementById('tbg-reduce').className='ttb '+(g==='reduce'?'sr':'');
 }
 
 function selIcon(ic,btn) {
