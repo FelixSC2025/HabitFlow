@@ -807,6 +807,7 @@
         <div class="wr-dot on" id="wr-d1"></div>
         <div class="wr-dot" id="wr-d2"></div>
         <div class="wr-dot" id="wr-d3"></div>
+        <div class="wr-dot" id="wr-d4"></div>
       </div>
       <button class="wr-x" onclick="wrClose()">✕</button>
     </div>
@@ -814,6 +815,7 @@
       <div id="wr-s1" class="wr-step on"></div>
       <div id="wr-s2" class="wr-step"></div>
       <div id="wr-s3" class="wr-step"></div>
+      <div id="wr-s4" class="wr-step"></div>
     </div>
     <div class="wr-foot">
       <button id="wr-back-btn" class="btn btn-g" style="flex:1;display:none" onclick="wrNav(-1)">← Zurück</button>
@@ -2576,7 +2578,7 @@ function hide(id)  { document.getElementById(id).classList.add('hidden'); }
 function showEl(id){ document.getElementById(id).style.display='flex'; }
 
 // ── WEEKLY REVIEW ──────────────────────────────────────────────────
-let wrStep = 1, wrHabitData = [], wrSelHabitId = null;
+let wrStep = 1, wrHabitData = [], wrSelHabitId = null, wrAiResult = null;
 
 const WR_DAY_LABELS = ['Mo','Di','Mi','Do','Fr','Sa','So'];
 
@@ -2613,6 +2615,7 @@ function checkWeeklyReview() {
 async function openWeeklyReview() {
   wrStep = 1;
   wrSelHabitId = null;
+  wrAiResult = null;
 
   const { mon, sun } = getLastWeekRange();
   const days = [];
@@ -2644,17 +2647,18 @@ async function openWeeklyReview() {
 
 function wrRenderStep(n) {
   wrStep = n;
-  [1,2,3].forEach(i => {
+  [1,2,3,4].forEach(i => {
     document.getElementById(`wr-d${i}`).classList.toggle('on', i === n);
     document.getElementById(`wr-s${i}`).classList.toggle('on', i === n);
   });
   document.getElementById('wr-back-btn').style.display = n === 1 ? 'none' : 'flex';
-  document.getElementById('wr-next-btn').textContent = n === 3 ? 'Fertig ✓' : 'Weiter →';
+  document.getElementById('wr-next-btn').textContent = n === 4 ? 'Fertig ✓' : 'Weiter →';
   const body = document.getElementById('wr-body');
   if (body) body.scrollTop = 0;
   if (n === 1) wrBuildStep1();
   if (n === 2) wrBuildStep2();
   if (n === 3) wrBuildStep3();
+  if (n === 4) wrBuildStep4();
 }
 
 function wrBuildStep1() {
@@ -2731,6 +2735,115 @@ function wrBuildStep3() {
   if (wrSelHabitId && wrSelHabitId !== 'none') wrShowEditForm(wrSelHabitId);
 }
 
+async function wrBuildStep4() {
+  const el = document.getElementById('wr-s4');
+
+  if (wrAiResult) {
+    el.innerHTML = `<div class="wr-title">🤖 KI-Wochenanalyse</div>${wrAiResult}`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="wr-title">🤖 KI-Wochenanalyse</div>
+    <div class="wr-sub">Claude analysiert deine Woche…</div>
+    <div id="wr-ai-result" style="margin-top:16px"><em style="color:var(--t3)">⏳ Analyse wird erstellt…</em></div>`;
+
+  const key = localStorage.getItem('hf_claude');
+  if (!key) {
+    document.getElementById('wr-ai-result').innerHTML = `
+      <div style="font-size:14px;line-height:1.7;color:var(--t2)">
+        Kein Claude API Key hinterlegt.<br>
+        Füge ihn in den <strong>Einstellungen (⚙️)</strong> ein, um wöchentliche KI-Analysen zu erhalten.
+      </div>`;
+    return;
+  }
+
+  const { mon } = getLastWeekRange();
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(mon); d.setDate(mon.getDate() + i);
+    days.push(d.toISOString().split('T')[0]);
+  }
+
+  let dailyLogs = {};
+  try {
+    const s = await dref().where(firebase.firestore.FieldPath.documentId(), 'in', days).get();
+    s.docs.forEach(d => { dailyLogs[d.id] = d.data(); });
+  } catch(e) {}
+
+  const WD = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+  const EMOJIS = ['','😕','😐','🙂','😊','🤩'];
+
+  const habitSummary = wrHabitData.length
+    ? wrHabitData.map(({ habit: h, count, rate }) =>
+        `- ${h.icon||'•'} ${h.name}: ${count}/7 (${rate}%)`).join('\n')
+    : '(Keine Gewohnheiten)';
+
+  const daySummary = days.map((day, i) => {
+    const log = dailyLogs[day] || {};
+    const parts = [];
+    if (log.morningIntention) parts.push(`Intention: "${log.morningIntention}"`);
+    if (log.eveningNote) parts.push(`Reflexion: "${log.eveningNote}"`);
+    if (log.eveningRating) parts.push(`Stimmung: ${EMOJIS[log.eveningRating]}`);
+    return `${WD[i]}: ${parts.length ? parts.join(' | ') : '—'}`;
+  }).join('\n');
+
+  const saved = loadLocal(wrKey()) || {};
+  const weekReflection = saved.reflection ? `\nEigene Reflexion: "${saved.reflection}"` : '';
+
+  const prompt = `Du bist ein wohlwollender, aber ehrlicher Habit Coach. Analysiere meine vergangene Woche kurz auf Deutsch.
+
+Gewohnheiten:
+${habitSummary}
+
+Tagesnotizen (Morgenintention / Abendreflexion / Stimmung):
+${daySummary}
+${weekReflection}
+
+Antworte mit exakt diesen drei Punkten:
+**Was lief gut:** (1–2 Sätze)
+**Muster:** (1 Satz — was fällt auf, positiv oder negativ)
+**Tipp für nächste Woche:** (1 konkreter, umsetzbarer Satz)
+
+Sei direkt, ehrlich und motivierend. Maximal 120 Wörter gesamt.`;
+
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-8',
+        max_tokens: 500,
+        thinking: { type: 'adaptive' },
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      document.getElementById('wr-ai-result').innerHTML =
+        `<em style="color:#e55">API-Fehler: ${data.error?.message || r.status}</em>`;
+      return;
+    }
+    const text = data.content?.find(b => b.type === 'text')?.text;
+    if (!text) {
+      document.getElementById('wr-ai-result').innerHTML =
+        `<em style="color:#e55">Unerwartete API-Antwort.</em>`;
+      return;
+    }
+    const html = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+    wrAiResult = `<div style="font-size:14px;line-height:1.8;color:var(--t1)">${html}</div>`;
+    document.getElementById('wr-s4').innerHTML = `<div class="wr-title">🤖 KI-Wochenanalyse</div>${wrAiResult}`;
+  } catch(e) {
+    document.getElementById('wr-ai-result').innerHTML =
+      `<em style="color:#e55">Netzwerkfehler: ${e.message}</em>`;
+  }
+}
+
 function wrSelHabit(id, el) {
   wrSelHabitId = id;
   document.querySelectorAll('#wr-s3 .wr-hsel').forEach(x => x.classList.remove('on'));
@@ -2768,9 +2881,9 @@ function wrShowEditForm(id) {
 
 function wrNav(dir) {
   if (wrStep === 2) wrSaveReflection();
-  if (dir === 1 && wrStep === 3) { wrFinish(); return; }
+  if (dir === 1 && wrStep === 4) { wrFinish(); return; }
   const next = wrStep + dir;
-  if (next < 1 || next > 3) return;
+  if (next < 1 || next > 4) return;
   wrRenderStep(next);
 }
 
