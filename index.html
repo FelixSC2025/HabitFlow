@@ -1091,13 +1091,14 @@ async function toggle(id) {
       }
     });
   }
-  await updateStreak(id, now);
+  await updateStreak(id, now, was);
 }
 
-async function updateStreak(id, done) {
+async function updateStreak(id, done, wasAlreadyDone) {
   const h = habits.find(h=>h.id===id);
   if (!h) return;
   if (done) {
+    if (wasAlreadyDone) return;
     const y = new Date(TODAY); y.setDate(y.getDate()-1);
     const yStr = y.toISOString().split('T')[0];
     const yd = await cref().doc(`${yStr}_${id}`).get();
