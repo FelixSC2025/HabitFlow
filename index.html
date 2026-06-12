@@ -292,6 +292,15 @@
   .sum-card{margin:0 16px 8px;padding:10px 14px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);display:flex;align-items:center;gap:4px;font-size:13px;color:var(--t2);flex-wrap:wrap}
   .sum-item{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-weight:600}
   .sum-sep{color:var(--t3);padding:0 4px}
+
+  /* FLEXIBLE FREQUENCY */
+  .cc.week-done{border-color:var(--ok);background:rgba(45,212,160,.15)}
+  .cc.week-done::after{content:'✓';font-size:11px;color:var(--ok);font-weight:800;line-height:1}
+  .week-prog{display:inline-flex;align-items:center;font-size:11px;font-weight:700;color:var(--t2);background:var(--s2);border-radius:100px;padding:2px 8px}
+  .week-prog.met{color:var(--ok);background:rgba(45,212,160,.12)}
+  .hrow.goal-met{background:rgba(45,212,160,.04)}
+  .freq-sel-btn{padding:8px 0;border-radius:7px;border:none;background:none;color:var(--t2);font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;font-family:inherit;width:100%}
+  .freq-sel-btn.active{background:rgba(45,212,160,.15);color:var(--ok)}
   </style>
 </head>
 <body>
@@ -533,6 +542,23 @@
       <input id="h-notify" class="inp" type="time" placeholder="HH:MM">
       <div class="hint">Tägliche Push-Benachrichtigung zu dieser Uhrzeit.</div>
     </div>
+    <!-- Häufigkeit -->
+    <div class="fg">
+      <label class="lbl">Häufigkeit</label>
+      <div class="type-toggle" style="grid-template-columns:1fr 1fr 1fr">
+        <button class="ttb" id="freq-daily"  onclick="selFreq('daily')">📅 Täglich</button>
+        <button class="ttb" id="freq-weekly" onclick="selFreq('weekly_count')">🔢 × Woche</button>
+        <button class="ttb" id="freq-days"   onclick="selFreq('weekly_days')">📆 Tage</button>
+      </div>
+    </div>
+    <div id="freq-count-row" class="fg" style="display:none">
+      <label class="lbl">Wie oft pro Woche?</label>
+      <div id="freq-count-btns" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
+    <div id="freq-days-row" class="fg" style="display:none">
+      <label class="lbl">An welchen Tagen?</label>
+      <div id="freq-day-btns" style="display:flex;gap:7px;flex-wrap:wrap"></div>
+    </div>
     <div style="display:flex;gap:10px">
       <button class="btn btn-g" style="flex:1" onclick="closeM('habit-m')">Abbrechen</button>
       <button class="btn btn-p" style="flex:2" onclick="saveHabit()">Speichern</button>
@@ -625,8 +651,9 @@
         <div class="slbl">📊 30d</div>
       </div>
     </div>
-    <div style="display:flex;gap:10px">
+    <div style="display:flex;gap:8px">
       <button class="btn btn-g" style="flex:1" onclick="closeM('detail-m')">Schließen</button>
+      <button class="btn btn-g" style="flex:1" id="edit-btn">Bearbeiten ✏️</button>
       <button class="btn btn-d" style="flex:1" id="del-btn">Löschen</button>
     </div>
   </div>
@@ -833,6 +860,7 @@ const TODAY = new Date();
 const TD = TODAY.toISOString().split('T')[0];
 const TDLocal = TODAY.getFullYear() + '-' + String(TODAY.getMonth()+1).padStart(2,'0') + '-' + String(TODAY.getDate()).padStart(2,'0');
 const HR = TODAY.getHours();
+const TODAY_DOW = TODAY.getDay(); // 0=So, 1=Mo, ..., 6=Sa
 const DAYS = ['So','Mo','Di','Mi','Do','Fr','Sa'];
 const MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 
@@ -863,8 +891,10 @@ let fcmListenerSet = false;
 const FCM_VAPID_KEY = 'BMn5qqZWjjAwto5duvZtHUbJhMpkEzdIM4xIC8S2rnoWzyWeKUSkRiWYEuOT9uAJ_53Sz26mhAhWKwcVt16h-5U';
 let habits = [], goals = [];
 let todayComp = {}, todayLog = {};
+let weekComp = {}; // key: `${date}_${habitId}`, value: boolean
 let obArea = null, obChal = null;
 let selType_ = 'build', selIcon_ = '📚', selBreakGoal_ = 'quit';
+let selFreqType_ = 'daily', selFreqCount_ = 3, selFreqDays_ = [];
 let selRating = 0;
 let editId = null;
 let curView = 't';
@@ -976,9 +1006,10 @@ async function startApp() {
   await registerSW();
   // Zeitzone speichern, damit Cloud Function korrekte Ortszeit rechnen kann
   uref().set({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }, { merge: true }).catch(()=>{});
-  await Promise.all([loadHabits(), loadToday(), loadGoals()]);
+  await Promise.all([loadHabits(), loadToday(), loadGoals(), loadWeekComp()]);
   checkMissBanner();
   checkWeeklyReview();
+  habits.filter(h => h.freqType && h.freqType !== 'daily').forEach(h => checkWeeklyStreak(h).catch(()=>{}));
   initTickTick();
   if (localStorage.getItem('hf_cal_token') && !localStorage.getItem('hf_cal_expiry')) {
     localStorage.setItem('hf_cal_expiry', String(Date.now() + 3540 * 1000));
@@ -1067,11 +1098,92 @@ async function checkMissBanner() {
   if (!habits.length) return;
   const y = new Date(TODAY); y.setDate(y.getDate()-1);
   const yStr = y.toISOString().split('T')[0];
+  const yDow = y.getDay();
   const s = await cref().where('date','==',yStr).get();
   const yc = {};
   s.docs.forEach(d=>{ const x=d.data(); yc[x.habitId]=x.completed; });
-  const missed = habits.some(h=>!yc[h.id]);
+  const missed = habits.some(h => {
+    if (!h.freqType || h.freqType === 'daily') return !yc[h.id];
+    if (h.freqType === 'weekly_days') return !!(h.freqDays?.includes(yDow) && !yc[h.id]);
+    return false; // weekly_count: no daily miss banner
+  });
   if (missed) document.getElementById('miss-banner').style.display='block';
+}
+
+// ── FREQUENCY HELPERS ──────────────────────────────────────────────
+function weekStart() {
+  const d = new Date(TODAY);
+  const day = d.getDay() || 7; // So→7, so Mo=1 is the start
+  d.setDate(d.getDate() - day + 1);
+  return d.toISOString().split('T')[0];
+}
+
+function weekDays() {
+  const start = new Date(weekStart() + 'T12:00:00');
+  return Array.from({length: 7}, (_, i) => {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    return d.toISOString().split('T')[0];
+  });
+}
+
+function getLastWeekDays() {
+  const start = new Date(weekStart() + 'T12:00:00');
+  start.setDate(start.getDate() - 7);
+  return Array.from({length: 7}, (_, i) => {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    return d.toISOString().split('T')[0];
+  });
+}
+
+function isHabitDueToday(h) {
+  if (!h.freqType || h.freqType === 'daily') return true;
+  if (h.freqType === 'weekly_count') return true; // always visible, tracked by week
+  if (h.freqType === 'weekly_days') return h.freqDays?.includes(TODAY_DOW) ?? false;
+  return true;
+}
+
+function getWeeklyCount(habitId) {
+  return weekDays().filter(day => weekComp[`${day}_${habitId}`]).length;
+}
+
+async function loadWeekComp() {
+  const days = weekDays();
+  weekComp = {};
+  try {
+    const s = await cref().where('date', 'in', days).get();
+    s.docs.forEach(d => { const x = d.data(); weekComp[`${x.date}_${x.habitId}`] = x.completed; });
+  } catch(e) {}
+}
+
+async function checkWeeklyStreak(h) {
+  if (!h.freqType || h.freqType === 'daily') return;
+  const thisWeek = weekStart();
+  if (h.lastStreakWeek === thisWeek) return; // already processed this week
+
+  const lastWeekDays = getLastWeekDays();
+  try {
+    const s = await cref().where('date', 'in', lastWeekDays).where('habitId', '==', h.id).get();
+    const completedCount = s.docs.filter(d => d.data().completed).length;
+
+    let weekMet = false;
+    if (h.freqType === 'weekly_count') weekMet = completedCount >= (h.freqCount || 1);
+    if (h.freqType === 'weekly_days')  weekMet = completedCount >= (h.freqDays?.length || 7);
+
+    if (weekMet) {
+      const newStreak = (h.streak || 0) + 1;
+      const newBest = Math.max(newStreak, h.longestStreak || 0);
+      await href().doc(h.id).update({ streak: newStreak, longestStreak: newBest, lastStreakWeek: thisWeek });
+      Object.assign(h, { streak: newStreak, longestStreak: newBest, lastStreakWeek: thisWeek });
+      if ([4,8,12,24,52].includes(newStreak)) toast(`🎉 ${newStreak} Wochen Streak — stark!`);
+    } else {
+      await href().doc(h.id).update({ streak: 0, lastStreakWeek: thisWeek });
+      Object.assign(h, { streak: 0, lastStreakWeek: thisWeek });
+    }
+    saveLocal('habits', habits);
+    renderAll();
+  } catch(e) {}
 }
 
 // ── TOGGLE ─────────────────────────────────────────────────────────
@@ -1079,6 +1191,7 @@ async function toggle(id) {
   const was = todayComp[id]||false;
   const now = !was;
   todayComp[id] = now;
+  weekComp[`${TD}_${id}`] = now;
   saveLocal('todayComp_' + TD, todayComp);
   renderAll();
   if (now) confetti();
@@ -1093,7 +1206,10 @@ async function toggle(id) {
       }
     });
   }
-  await updateStreak(id, now, was);
+  const h = habits.find(h=>h.id===id);
+  if (!h?.freqType || h.freqType === 'daily') {
+    await updateStreak(id, now, was);
+  }
 }
 
 async function updateStreak(id, done, wasAlreadyDone) {
@@ -1128,9 +1244,14 @@ function renderToday() {
     if (h.timeOfDay==='morning'   && HR>=14) return false;
     if (h.timeOfDay==='evening'   && HR<15)  return false;
     if (h.timeOfDay==='afternoon' && (HR<12||HR>=18)) return false;
+    if (!isHabitDueToday(h)) return false;
     return true;
   });
-  const done = vis.filter(h=>todayComp[h.id]).length;
+  const done = vis.filter(h => {
+    if (!h.freqType || h.freqType === 'daily') return !!todayComp[h.id];
+    if (h.freqType === 'weekly_count') return getWeeklyCount(h.id) >= (h.freqCount || 1);
+    return !!todayComp[h.id];
+  }).length;
   const total = vis.length;
   const pct = total ? Math.round(done/total*100) : 0;
   document.getElementById('prog-lbl').textContent = `${done} von ${total} erledigt`;
@@ -1147,6 +1268,25 @@ function renderToday() {
   list.innerHTML = vis.map(h=>{
     const d = todayComp[h.id]||false;
     const s = h.streak||0;
+
+    if (h.freqType === 'weekly_count') {
+      const wc = getWeeklyCount(h.id);
+      const fc = h.freqCount || 1;
+      const goalMet = wc >= fc;
+      const ccCls = d ? 'on' : goalMet ? 'week-done' : '';
+      return `<div class="hrow${goalMet?' goal-met':''}" onclick="toggle('${h.id}')" oncontextmenu="openDetail('${h.id}');return false">
+        <div class="cc ${ccCls}"></div>
+        <div class="htext">
+          <div class="hname">${h.icon||'⭐'} ${h.name}</div>
+          <div class="hsub">
+            ${s>0?`<span class="streak-chip">🔥 ${s}</span>`:''}
+            <span class="week-prog${goalMet?' met':''}">${wc}/${fc} diese Woche</span>
+          </div>
+          ${h.temptationBundle&&!d?`<div style="font-size:11px;color:var(--warn);margin-top:3px">🎵 ${h.temptationBundle}</div>`:''}
+        </div>
+      </div>`;
+    }
+
     return `<div class="hrow ${d?'done':''}" onclick="toggle('${h.id}')" oncontextmenu="openDetail('${h.id}');return false">
       <div class="cc ${d?'on':''}"></div>
       <div class="htext">
@@ -1231,11 +1371,15 @@ async function renderStats() {
     const tc66=days66.filter(day=>cmap[`${day}_${h.id}`]).length;
     const arc=Math.min(100,Math.round(tc66/66*100));
     const cells=days30.map(day=>`<div class="hcell ${cmap[`${day}_${h.id}`]?'done':''} ${day===TD?'today':''}"></div>`).join('');
+    const freqLabel = (!h.freqType || h.freqType==='daily') ? 'Täglich'
+      : h.freqType==='weekly_count' ? `Ziel: ${h.freqCount}× pro Woche`
+      : `Tage: ${(h.freqDays||[]).map(d=>['So','Mo','Di','Mi','Do','Fr','Sa'][d]).join(', ')}`;
     return `<div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
         <div style="font-weight:700">${h.icon||'⭐'} ${h.name}</div>
         <div style="font-size:13px;color:var(--t2)">${rate}%</div>
       </div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:9px">${freqLabel}</div>
       <div class="hmap">${cells}</div>
       <div style="font-size:11px;color:var(--t2);margin:8px 0 4px;display:flex;justify-content:space-between"><span>66-Tage-Fenster</span><span>${tc66}/66</span></div>
       <div class="pbar"><div class="pfill ok" style="width:${arc}%"></div></div>
@@ -2067,12 +2211,18 @@ function renderDaySummary() {
     if (h.timeOfDay === 'morning'   && HR >= 14) return false;
     if (h.timeOfDay === 'evening'   && HR < 15)  return false;
     if (h.timeOfDay === 'afternoon' && (HR < 12 || HR >= 18)) return false;
+    if (!isHabitDueToday(h)) return false;
     return true;
   });
+  const doneH = vis.filter(h => {
+    if (!h.freqType || h.freqType === 'daily') return !!todayComp[h.id];
+    if (h.freqType === 'weekly_count') return getWeeklyCount(h.id) >= (h.freqCount || 1);
+    return !!todayComp[h.id];
+  }).length;
   const parts = [];
   if (ttConn) parts.push(`<span class="sum-item">📋 ${ttTasks.filter(t => t.status !== 2).length} Tasks</span>`);
   if (calConn) parts.push(`<span class="sum-item">📅 ${calTodayCount} Termine</span>`);
-  parts.push(`<span class="sum-item">🔥 ${vis.filter(h => todayComp[h.id]).length}/${vis.length} Habits</span>`);
+  parts.push(`<span class="sum-item">🔥 ${doneH}/${vis.length} Habits</span>`);
   el.style.display = 'flex';
   el.innerHTML = parts.join('<span class="sum-sep">·</span>');
 }
@@ -2149,6 +2299,7 @@ function openAddHabit() {
   document.getElementById('hm-title').textContent='Gewohnheit hinzufügen';
   ['h-name','h-tiny','h-cue','h-bundle','h-notify','h-motivation','h-replacement'].forEach(id=>document.getElementById(id).value='');
   selType_='build'; selIcon_='📚'; selBreakGoal_='quit';
+  selFreqType_='daily'; selFreqCount_=3; selFreqDays_=[];
   document.getElementById('tb-b').className='ttb sb';
   document.getElementById('tb-k').className='ttb';
   document.getElementById('break-fields').style.display='none';
@@ -2156,6 +2307,8 @@ function openAddHabit() {
   document.getElementById('tbg-quit').className='ttb sk';
   document.getElementById('tbg-reduce').className='ttb';
   buildIconGrid();
+  selFreq('daily');
+  buildFreqUI();
   openM('habit');
 }
 
@@ -2174,6 +2327,9 @@ async function saveHabit() {
     if (habits.length >= limit) { toast(`Max. ${limit} Gewohnheiten — Qualität vor Quantität!`); return; }
   }
 
+  if (selFreqType_ === 'weekly_days' && selFreqDays_.length === 0) {
+    toast('Bitte mindestens einen Tag auswählen'); return;
+  }
   const notifyAt = document.getElementById('h-notify').value.trim();
   const data = {
     name, type:selType_, icon:selIcon_,
@@ -2182,7 +2338,10 @@ async function saveHabit() {
     timeOfDay:        'any',
     notifyAt:         notifyAt || null,
     temptationBundle: selType_==='build' ? document.getElementById('h-bundle').value.trim() : '',
-    streak:0, longestStreak:0, totalCompletions:0
+    streak:0, longestStreak:0, totalCompletions:0,
+    freqType:  selFreqType_,
+    freqCount: selFreqType_==='weekly_count' ? selFreqCount_ : null,
+    freqDays:  selFreqType_==='weekly_days'  ? [...selFreqDays_] : null
   };
   if (selType_==='break') {
     data.breakGoal   = selBreakGoal_;
@@ -2285,7 +2444,8 @@ async function openDetail(id) {
     rw.style.display = h.replacement?'block':'none';
     if(h.replacement) document.getElementById('d-replacement').textContent=h.replacement;
   }
-  document.getElementById('del-btn').onclick = ()=>deleteHabit(id);
+  document.getElementById('del-btn').onclick  = () => deleteHabit(id);
+  document.getElementById('edit-btn').onclick = () => { closeM('detail-m'); openEditHabit(id); };
   openM('detail');
   // async 30d rate (use last 10 days to stay within Firestore 'in' limit)
   const d10=[]; for(let i=9;i>=0;i--){const d=new Date(TODAY);d.setDate(d.getDate()-i);d10.push(d.toISOString().split('T')[0]);}
@@ -2550,6 +2710,75 @@ function selIcon(ic,btn) {
   selIcon_=ic;
   document.querySelectorAll('.ibtn').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');
+}
+
+function selFreq(type) {
+  selFreqType_ = type;
+  document.getElementById('freq-daily').className  = 'ttb' + (type === 'daily'         ? ' sb' : '');
+  document.getElementById('freq-weekly').className = 'ttb' + (type === 'weekly_count'  ? ' sb' : '');
+  document.getElementById('freq-days').className   = 'ttb' + (type === 'weekly_days'   ? ' sb' : '');
+  document.getElementById('freq-count-row').style.display = type === 'weekly_count' ? 'block' : 'none';
+  document.getElementById('freq-days-row').style.display  = type === 'weekly_days'  ? 'block' : 'none';
+}
+
+function selFreqCount(n) {
+  selFreqCount_ = n;
+  document.querySelectorAll('.freq-cnt-btn').forEach(b => b.classList.toggle('on', parseInt(b.dataset.n) === n));
+}
+
+function toggleFreqDay(d) {
+  const i = selFreqDays_.indexOf(d);
+  if (i >= 0) selFreqDays_.splice(i, 1);
+  else selFreqDays_.push(d);
+  document.querySelectorAll('.freq-day-btn').forEach(b => b.classList.toggle('on', selFreqDays_.includes(parseInt(b.dataset.d))));
+}
+
+function buildFreqUI() {
+  const countDiv = document.getElementById('freq-count-btns');
+  if (countDiv) countDiv.innerHTML = [1,2,3,4,5,6].map(n =>
+    `<button class="ibtn freq-cnt-btn${selFreqCount_===n?' on':''}" data-n="${n}" onclick="selFreqCount(${n})" style="width:42px;height:40px;font-size:13px;font-weight:700">${n}×</button>`
+  ).join('');
+
+  const DAY_ORDER = [1,2,3,4,5,6,0]; // Mo Di Mi Do Fr Sa So
+  const DAY_LABELS = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+  const dayDiv = document.getElementById('freq-day-btns');
+  if (dayDiv) dayDiv.innerHTML = DAY_ORDER.map(d =>
+    `<button class="ibtn freq-day-btn${selFreqDays_.includes(d)?' on':''}" data-d="${d}" onclick="toggleFreqDay(${d})" style="width:40px;height:36px;font-size:12px;font-weight:700">${DAY_LABELS[d]}</button>`
+  ).join('');
+}
+
+function openEditHabit(id) {
+  const h = habits.find(x => x.id === id);
+  if (!h) return;
+  editId = id;
+  document.getElementById('hm-title').textContent = 'Gewohnheit bearbeiten';
+  ['h-motivation','h-replacement'].forEach(fid => document.getElementById(fid).value = '');
+  document.getElementById('h-name').value    = h.name || '';
+  document.getElementById('h-tiny').value    = h.twoMinuteVersion || '';
+  document.getElementById('h-cue').value     = h.cue || '';
+  document.getElementById('h-bundle').value  = h.temptationBundle || '';
+  document.getElementById('h-notify').value  = h.notifyAt || '';
+  if (h.motivation)   document.getElementById('h-motivation').value   = h.motivation;
+  if (h.replacement)  document.getElementById('h-replacement').value  = h.replacement;
+
+  selType_ = h.type || 'build';
+  selIcon_ = h.icon || '📚';
+  selBreakGoal_ = h.breakGoal || 'quit';
+  selFreqType_  = h.freqType  || 'daily';
+  selFreqCount_ = h.freqCount || 3;
+  selFreqDays_  = h.freqDays  ? [...h.freqDays] : [];
+
+  document.getElementById('tb-b').className = 'ttb' + (selType_==='build' ? ' sb' : '');
+  document.getElementById('tb-k').className = 'ttb' + (selType_==='break' ? ' sk' : '');
+  document.getElementById('break-fields').style.display = selType_==='break' ? 'block' : 'none';
+  document.getElementById('build-fields').style.display = selType_==='build' ? 'block' : 'none';
+  document.getElementById('tbg-quit').className   = 'ttb' + (selBreakGoal_==='quit'   ? ' sk' : '');
+  document.getElementById('tbg-reduce').className = 'ttb' + (selBreakGoal_==='reduce' ? ' sr' : '');
+
+  buildIconGrid();
+  selFreq(selFreqType_);
+  buildFreqUI();
+  openM('habit');
 }
 
 // ── CONFETTI ────────────────────────────────────────────────────────
