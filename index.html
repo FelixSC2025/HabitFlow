@@ -707,6 +707,7 @@
         <button class="cat-btn" onclick="selTrigCat('uhrzeit',this)">🕐 Uhrzeit</button>
       </div>
     </div>
+    <div id="trig-tip" style="display:none;background:linear-gradient(135deg,rgba(124,111,247,.1),rgba(168,85,247,.07));border:1px solid rgba(124,111,247,.22);border-radius:var(--rs);padding:12px 14px;margin-bottom:14px;font-size:13px;color:var(--t2);line-height:1.6"></div>
     <div class="fg">
       <label class="lbl">Notiz <span style="font-weight:400;text-transform:none;font-size:10px">(optional, max 200 Zeichen)</span></label>
       <textarea id="trig-note" class="inp" placeholder="z.B. Nach dem Meeting mit Chef" maxlength="200" rows="2"></textarea>
@@ -2921,6 +2922,7 @@ function openTriggerLog(habitId) {
   trigCat_ = null;
   trigResisted_ = null;
   document.getElementById('trig-note').value = '';
+  document.getElementById('trig-tip').style.display = 'none';
   document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('on'));
   document.getElementById('resist-yes').className = 'resist-btn';
   document.getElementById('resist-no').className  = 'resist-btn';
@@ -2931,6 +2933,40 @@ function selTrigCat(cat, btn) {
   trigCat_ = cat;
   document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('on'));
   btn.classList.add('on');
+  loadTrigTip(cat);
+}
+
+async function loadTrigTip(cat) {
+  const tipEl = document.getElementById('trig-tip');
+  const ci = TRIG_CATS[cat] || { icon: '❓', label: cat };
+  const staticTip = TRIG_INSIGHTS[cat] || '';
+  tipEl.style.display = 'block';
+  tipEl.innerHTML = `<strong style="color:var(--p)">💡 Tipp</strong><br>${staticTip}`;
+
+  const key = localStorage.getItem('hf_claude');
+  if (!key) return;
+
+  const habit = habits.find(h => h.id === trigHabitId_);
+  const habitName = habit ? habit.name : 'diese Gewohnheit';
+  tipEl.innerHTML = `<strong style="color:var(--p)">💡 KI-Tipp</strong> <em style="color:var(--t3);font-size:11px">lädt…</em>`;
+
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 120,
+        messages: [{ role: 'user', content: `Du bist ein Verhaltenspsychologe. Jemand kämpft gegen die Gewohnheit "${habitName}" und spürt gerade einen Drang, ausgelöst durch: ${ci.label}. Gib einen einzigen, konkreten Sofort-Tipp (2–3 Sätze) auf Deutsch, was die Person JETZT in diesem Moment tun kann, um dem Drang zu widerstehen. Kein Intro, direkt zum Tipp.` }]
+      })
+    });
+    const data = await r.json();
+    const text = data.content?.[0]?.text;
+    if (text) tipEl.innerHTML = `<strong style="color:var(--p)">💡 KI-Tipp</strong><br>${text.trim().replace(/\n/g,'<br>')}`;
+    else tipEl.innerHTML = `<strong style="color:var(--p)">💡 Tipp</strong><br>${staticTip}`;
+  } catch(e) {
+    tipEl.innerHTML = `<strong style="color:var(--p)">💡 Tipp</strong><br>${staticTip}`;
+  }
 }
 
 function selResisted(val) {
