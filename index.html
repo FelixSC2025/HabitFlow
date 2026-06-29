@@ -2964,6 +2964,48 @@ function wrBuildStep3() {
   if (wrSelHabitId && wrSelHabitId !== 'none') wrShowEditForm(wrSelHabitId);
 }
 
+async function fetchTTWeekSummary(mon, sun) {
+  if (!localStorage.getItem('hf_tt_token') || !ttProjects.length) return null;
+
+  const pad = n => String(n).padStart(2, '0');
+  const monISO = `${mon.getFullYear()}-${pad(mon.getMonth()+1)}-${pad(mon.getDate())}T00:00:00+0000`;
+  const sunISO = `${sun.getFullYear()}-${pad(sun.getMonth()+1)}-${pad(sun.getDate())}T23:59:59+0000`;
+  const monStr = mon.toISOString().split('T')[0];
+  const sunStr = sun.toISOString().split('T')[0];
+
+  const completed = [];
+  await Promise.all(
+    ttProjects.slice(0, 15).map(async p => {
+      const data = await ttFetch(
+        `/project/${p.id}/closed?from=${encodeURIComponent(monISO)}&to=${encodeURIComponent(sunISO)}`
+      );
+      if (data?.tasks) {
+        data.tasks.forEach(t => completed.push({ title: t.title, projectName: p.name }));
+      }
+    })
+  );
+
+  const missed = ttProjectData.flatMap(r =>
+    (r.tasks || []).filter(t => {
+      const d = ttLocalDate(t.dueDate);
+      return d && d >= monStr && d <= sunStr;
+    }).map(t => ({ title: t.title, projectName: r.project?.name || '' }))
+  );
+
+  if (!completed.length && !missed.length) return null;
+
+  const lines = [];
+  if (completed.length) {
+    lines.push(`Erledigte Aufgaben (${completed.length}):`);
+    completed.forEach(t => lines.push(`✅ ${t.title}${t.projectName ? ` [${t.projectName}]` : ''}`));
+  }
+  if (missed.length) {
+    lines.push(`Nicht erledigte Aufgaben (${missed.length}):`);
+    missed.forEach(t => lines.push(`❌ ${t.title}${t.projectName ? ` [${t.projectName}]` : ''}`));
+  }
+  return lines.join('\n');
+}
+
 async function wrBuildStep4() {
   const el = document.getElementById('wr-s4');
 
@@ -2987,7 +3029,7 @@ async function wrBuildStep4() {
     return;
   }
 
-  const { mon } = getLastWeekRange();
+  const { mon, sun } = getLastWeekRange();
   const days = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(mon); d.setDate(mon.getDate() + i);
@@ -3020,6 +3062,12 @@ async function wrBuildStep4() {
   const saved = loadLocal(wrKey()) || {};
   const weekReflection = saved.reflection ? `\nEigene Reflexion: "${saved.reflection}"` : '';
 
+  const ttWeekSummary = await fetchTTWeekSummary(mon, sun);
+  const ttSection = ttWeekSummary ? `\n\nTickTick Aufgaben der Woche:\n${ttWeekSummary}` : '';
+  const ttInstruction = ttWeekSummary
+    ? '\n**Aufgaben-Fazit:** (1 Satz — habe ich meine Aufgaben gut erledigt und was kann ich verbessern)'
+    : '';
+
   const prompt = `Du bist ein wohlwollender, aber ehrlicher Habit Coach. Analysiere meine vergangene Woche kurz auf Deutsch.
 
 Gewohnheiten:
@@ -3027,14 +3075,14 @@ ${habitSummary}
 
 Tagesnotizen (Morgenintention / Abendreflexion / Stimmung):
 ${daySummary}
-${weekReflection}
+${weekReflection}${ttSection}
 
-Antworte mit exakt diesen drei Punkten:
+Antworte mit exakt diesen Punkten:
 **Was lief gut:** (1–2 Sätze)
 **Muster:** (1 Satz — was fällt auf, positiv oder negativ)
-**Tipp für nächste Woche:** (1 konkreter, umsetzbarer Satz)
+**Tipp für nächste Woche:** (1 konkreter, umsetzbarer Satz)${ttInstruction}
 
-Sei direkt, ehrlich und motivierend. Maximal 120 Wörter gesamt.`;
+Sei direkt, ehrlich und motivierend. Maximal ${ttWeekSummary ? '150' : '120'} Wörter gesamt.`;
 
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -3047,7 +3095,7 @@ Sei direkt, ehrlich und motivierend. Maximal 120 Wörter gesamt.`;
       },
       body: JSON.stringify({
         model: 'claude-opus-4-8',
-        max_tokens: 500,
+        max_tokens: 650,
         thinking: { type: 'adaptive' },
         messages: [{ role: 'user', content: prompt }]
       })
