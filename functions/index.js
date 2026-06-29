@@ -60,8 +60,7 @@ exports.sendHabitReminders = onSchedule(
           sends.push(
             fcm.send({
               token,
-              notification: { title, body },
-              data: { habitId: habitDoc.id, url },
+              data: { habitId: habitDoc.id, url, title, body },
               webpush: {
                 notification: {
                   icon:  `${url}/icon-192.png`,

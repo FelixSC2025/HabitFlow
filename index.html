@@ -137,7 +137,8 @@
 
   /* HEATMAP */
   .hmap{display:grid;grid-template-columns:repeat(10,1fr);gap:5px;padding:2px 0}
-  .hcell{aspect-ratio:1;border-radius:5px;background:var(--s2)}
+  .hcell{aspect-ratio:1;border-radius:5px;background:var(--s2);cursor:pointer;transition:opacity .1s,transform .1s}
+  .hcell:active{opacity:.7;transform:scale(.88)}
   .hcell.done{background:var(--ok)}
   .hcell.today{box-shadow:0 0 0 2px var(--p)}
 
@@ -956,6 +957,7 @@ const FCM_VAPID_KEY = 'BMn5qqZWjjAwto5duvZtHUbJhMpkEzdIM4xIC8S2rnoWzyWeKUSkRiWYE
 let habits = [], goals = [];
 let todayComp = {}, todayLog = {};
 let weekComp = {}; // key: `${date}_${habitId}`, value: boolean
+let statsMap = {}; // key: `${date}_${habitId}`, cached for stats view
 let obArea = null, obChal = null;
 let selType_ = 'build', selIcon_ = '📚', selBreakGoal_ = 'quit';
 let selFreqType_ = 'daily', selFreqCount_ = 3, selFreqDays_ = [];
@@ -1444,34 +1446,103 @@ async function renderStats() {
   const days66=[];
   for (let i=65;i>=0;i--) { const d=new Date(TODAY); d.setDate(d.getDate()-i); days66.push(d.toISOString().split('T')[0]); }
   const days30=days66.slice(-30);
-  const cmap={};
+  statsMap={};
   for (let i=0;i<days66.length;i+=10) {
     const b=days66.slice(i,i+10);
     const s=await cref().where('date','in',b).get();
-    s.docs.forEach(d=>{ const x=d.data(); cmap[`${x.date}_${x.habitId}`]=x.completed; });
+    s.docs.forEach(d=>{ const x=d.data(); statsMap[`${x.date}_${x.habitId}`]=x.completed; });
   }
 
+  renderStatsHabits(days66, days30);
+  renderTriggerStats();
+}
+
+function renderStatsHabits(days66, days30) {
   document.getElementById('stats-habits').innerHTML = habits.map(h=>{
-    const d30=days30.filter(day=>cmap[`${day}_${h.id}`]).length;
+    const d30=days30.filter(day=>statsMap[`${day}_${h.id}`]).length;
     const rate=Math.round(d30/30*100);
-    const tc66=days66.filter(day=>cmap[`${day}_${h.id}`]).length;
+    const tc66=days66.filter(day=>statsMap[`${day}_${h.id}`]).length;
     const arc=Math.min(100,Math.round(tc66/66*100));
-    const cells=days30.map(day=>`<div class="hcell ${cmap[`${day}_${h.id}`]?'done':''} ${day===TD?'today':''}"></div>`).join('');
+    const cells=days30.map(day=>{
+      const done=statsMap[`${day}_${h.id}`]?'done':'';
+      const isToday=day===TD?'today':'';
+      return `<div class="hcell ${done} ${isToday}" title="${day}" onclick="toggleDay('${h.id}','${day}',this)"></div>`;
+    }).join('');
     const freqLabel = (!h.freqType || h.freqType==='daily') ? 'Täglich'
       : h.freqType==='weekly_count' ? `Ziel: ${h.freqCount}× pro Woche`
       : `Tage: ${(h.freqDays||[]).map(d=>['So','Mo','Di','Mi','Do','Fr','Sa'][d]).join(', ')}`;
-    return `<div class="card">
+    return `<div class="card" id="stat-card-${h.id}" data-hid="${h.id}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
         <div style="font-weight:700">${h.icon||'⭐'} ${h.name}</div>
-        <div style="font-size:13px;color:var(--t2)">${rate}%</div>
+        <div style="font-size:13px;color:var(--t2)" id="stat-rate-${h.id}">${rate}%</div>
       </div>
       <div style="font-size:11px;color:var(--t3);margin-bottom:9px">${freqLabel}</div>
       <div class="hmap">${cells}</div>
-      <div style="font-size:11px;color:var(--t2);margin:8px 0 4px;display:flex;justify-content:space-between"><span>66-Tage-Fenster</span><span>${tc66}/66</span></div>
-      <div class="pbar"><div class="pfill ok" style="width:${arc}%"></div></div>
+      <div style="font-size:11px;color:var(--t2);margin:8px 0 4px;display:flex;justify-content:space-between"><span>66-Tage-Fenster</span><span id="stat-tc66-${h.id}">${tc66}/66</span></div>
+      <div class="pbar"><div class="pfill ok" id="stat-arc-${h.id}" style="width:${arc}%"></div></div>
     </div>`;
   }).join('');
-  renderTriggerStats();
+}
+
+async function toggleDay(habitId, day, cellEl) {
+  const key = `${day}_${habitId}`;
+  const was = !!statsMap[key];
+  const now = !was;
+  statsMap[key] = now;
+
+  // Optimistic UI update
+  cellEl.classList.toggle('done', now);
+
+  // Sync today's state if toggling today
+  if (day === TD) {
+    todayComp[habitId] = now;
+    weekComp[key] = now;
+    saveLocal('todayComp_' + TD, todayComp);
+    renderAll();
+    if (now) confetti();
+  }
+
+  // Update Firestore
+  await cref().doc(`${day}_${habitId}`).set({ habitId, date:day, completed:now, ts:firebase.firestore.FieldValue.serverTimestamp() });
+
+  // Update totalCompletions on the habit
+  const h = habits.find(h=>h.id===habitId);
+  if (h) {
+    const delta = now ? 1 : -1;
+    const nt = Math.max(0, (h.totalCompletions||0) + delta);
+    await href().doc(habitId).update({ totalCompletions: nt });
+    h.totalCompletions = nt;
+  }
+
+  // Refresh stats counters in the card without full reload
+  const card = document.getElementById(`stat-card-${habitId}`);
+  if (card && h) {
+    const days30Els = card.querySelectorAll('.hcell');
+    const d30 = Array.from(days30Els).filter(el=>el.classList.contains('done')).length;
+    const rate = Math.round(d30/30*100);
+    const rateEl = document.getElementById(`stat-rate-${habitId}`);
+    if (rateEl) rateEl.textContent = rate + '%';
+
+    // Recount 66-day completions from statsMap
+    const tc66 = Object.keys(statsMap).filter(k=>k.endsWith('_'+habitId) && statsMap[k]).length;
+    const arc = Math.min(100, Math.round(tc66/66*100));
+    const tc66El = document.getElementById(`stat-tc66-${habitId}`);
+    if (tc66El) tc66El.textContent = tc66+'/66';
+    const arcEl = document.getElementById(`stat-arc-${habitId}`);
+    if (arcEl) arcEl.style.width = arc+'%';
+  }
+
+  // Update top summary grid
+  const tot = habits.length;
+  const done = habits.filter(h=>todayComp[h.id]).length;
+  const maxS = habits.reduce((m,hh)=>Math.max(m,hh.streak||0),0);
+  const totD = habits.reduce((m,hh)=>m+(hh.totalCompletions||0),0);
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="scard"><div class="sval" style="color:var(--ok)">${done}/${tot}</div><div class="slbl">Heute ✓</div></div>
+    <div class="scard"><div class="sval" style="color:var(--warn)">🔥 ${maxS}</div><div class="slbl">Bester Streak</div></div>
+    <div class="scard"><div class="sval" style="color:var(--p)">${tot}</div><div class="slbl">Aktive Habits</div></div>
+    <div class="scard"><div class="sval" style="color:var(--ok)">${totD}</div><div class="slbl">Gesamt ✓</div></div>
+  `;
 }
 
 // ── CALENDAR ────────────────────────────────────────────────────────
