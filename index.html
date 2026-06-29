@@ -301,6 +301,32 @@
   .hrow.goal-met{background:rgba(45,212,160,.04)}
   .freq-sel-btn{padding:8px 0;border-radius:7px;border:none;background:none;color:var(--t2);font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;font-family:inherit;width:100%}
   .freq-sel-btn.active{background:rgba(45,212,160,.15);color:var(--ok)}
+
+  /* TRIGGER LOG */
+  .trigger-btn{background:rgba(252,106,106,.1);border:1.5px solid rgba(252,106,106,.28);color:var(--err);border-radius:var(--rs);padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:inherit;transition:all .15s;-webkit-tap-highlight-color:transparent}
+  .trigger-btn:active{transform:scale(.95);background:rgba(252,106,106,.18)}
+  .cat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .cat-btn{background:var(--s2);border:1.5px solid var(--border);border-radius:var(--rs);padding:10px 8px;font-size:13px;font-weight:600;cursor:pointer;color:var(--t1);font-family:inherit;transition:all .15s;-webkit-tap-highlight-color:transparent;text-align:center}
+  .cat-btn.on{border-color:var(--err);background:rgba(252,106,106,.12);color:var(--err)}
+  .cat-btn:active{transform:scale(.97)}
+  .resist-toggle{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .resist-btn{padding:11px 8px;border-radius:var(--rs);border:1.5px solid var(--border);background:var(--s2);color:var(--t2);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;-webkit-tap-highlight-color:transparent}
+  .resist-btn.yes-on{border-color:var(--ok);background:rgba(45,212,160,.15);color:var(--ok)}
+  .resist-btn.no-on{border-color:var(--err);background:rgba(252,106,106,.1);color:var(--err)}
+  .resist-btn:active{transform:scale(.97)}
+  .trig-item{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--s2);border-radius:var(--rs);margin-bottom:6px}
+  .trig-item-cat{font-size:16px;flex-shrink:0}
+  .trig-item-info{flex:1;min-width:0}
+  .trig-item-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:100px;flex-shrink:0}
+  .trig-badge-ok{background:rgba(45,212,160,.15);color:var(--ok)}
+  .trig-badge-err{background:rgba(252,106,106,.1);color:var(--err)}
+  .tbar-wrap{margin-bottom:10px}
+  .tbar-label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px}
+  .tbar-bg{height:8px;background:var(--s2);border-radius:4px;overflow:hidden}
+  .tbar-fill{height:100%;background:var(--err);border-radius:4px;transition:width .5s cubic-bezier(.4,0,.2,1)}
+  .insight-card{background:linear-gradient(135deg,rgba(124,111,247,.12),rgba(168,85,247,.08));border:1px solid rgba(124,111,247,.25);border-radius:var(--r);padding:14px 16px;margin:0 16px 10px}
+  .insight-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--p);margin-bottom:8px}
+  .insight-text{font-size:13px;color:var(--t2);line-height:1.6}
   </style>
 </head>
 <body>
@@ -447,6 +473,7 @@
       <div class="sgrid" id="stats-grid"></div>
       <div class="sec">VERLAUF PRO GEWOHNHEIT (30 Tage)</div>
       <div id="stats-habits"></div>
+      <div id="trigger-stats"></div>
     </div>
     <nav class="bnav">
       <button class="nb" onclick="nav('t')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Heute</button>
@@ -632,6 +659,11 @@
         <div id="d-replacement" style="font-size:13px;color:var(--t2)"></div>
       </div>
     </div>
+    <div id="d-triggers-wrap" style="display:none;margin-bottom:12px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--t2);margin-bottom:8px">LETZTE AUSLÖSER</div>
+      <div id="d-triggers-list"></div>
+      <button id="d-triggers-more" style="display:none;background:none;border:none;color:var(--p);font-size:13px;font-weight:600;cursor:pointer;padding:4px 0;font-family:inherit"></button>
+    </div>
     <div class="arc">
       <div class="arc-lbl"><span>66-Tage-Formationsfenster</span><strong><span id="d-arc-n">0</span>/66</strong></div>
       <div class="pbar" style="height:8px"><div class="pfill ok" id="d-arc-fill" style="width:0%"></div></div>
@@ -656,6 +688,37 @@
       <button class="btn btn-g" style="flex:1" id="edit-btn">Bearbeiten ✏️</button>
       <button class="btn btn-d" style="flex:1" id="del-btn">Löschen</button>
     </div>
+  </div>
+</div>
+
+<!-- Trigger Log -->
+<div id="trigger-m" class="mwrap" onclick="mclick(event,'trigger-m')">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <h2>⚡ Was hat den Drang ausgelöst?</h2>
+    <div class="fg">
+      <label class="lbl">Kategorie</label>
+      <div class="cat-grid">
+        <button class="cat-btn" onclick="selTrigCat('stress',this)">😰 Stress</button>
+        <button class="cat-btn" onclick="selTrigCat('muedigkeit',this)">😴 Müdigkeit</button>
+        <button class="cat-btn" onclick="selTrigCat('langeweile',this)">😟 Langeweile</button>
+        <button class="cat-btn" onclick="selTrigCat('sozial',this)">👥 Sozial</button>
+        <button class="cat-btn" onclick="selTrigCat('ort',this)">📍 Ort/Umgebung</button>
+        <button class="cat-btn" onclick="selTrigCat('uhrzeit',this)">🕐 Uhrzeit</button>
+      </div>
+    </div>
+    <div class="fg">
+      <label class="lbl">Notiz <span style="font-weight:400;text-transform:none;font-size:10px">(optional, max 200 Zeichen)</span></label>
+      <textarea id="trig-note" class="inp" placeholder="z.B. Nach dem Meeting mit Chef" maxlength="200" rows="2"></textarea>
+    </div>
+    <div class="fg">
+      <label class="lbl">Hast du widerstanden?</label>
+      <div class="resist-toggle">
+        <button class="resist-btn" id="resist-yes" onclick="selResisted(true)">✓ Ja, widerstanden</button>
+        <button class="resist-btn" id="resist-no" onclick="selResisted(false)">✗ Nachgegeben</button>
+      </div>
+    </div>
+    <button class="btn btn-p btn-w" onclick="saveTriggerLog()">Speichern</button>
   </div>
 </div>
 
@@ -943,6 +1006,26 @@ const href  = () => uref().collection('habits');
 const gref  = () => uref().collection('goals');
 const cref  = () => uref().collection('completions');
 const dref  = () => uref().collection('daily');
+const tref  = () => uref().collection('triggers');
+
+const TRIG_CATS = {
+  stress:     { icon: '😰', label: 'Stress' },
+  muedigkeit: { icon: '😴', label: 'Müdigkeit' },
+  langeweile: { icon: '😟', label: 'Langeweile' },
+  sozial:     { icon: '👥', label: 'Sozial' },
+  ort:        { icon: '📍', label: 'Ort/Umgebung' },
+  uhrzeit:    { icon: '🕐', label: 'Uhrzeit' },
+  sonstiges:  { icon: '❓', label: 'Sonstiges' }
+};
+const TRIG_INSIGHTS = {
+  stress:     'Plane eine 5-Minuten-Pause nach stressigen Momenten ein.',
+  muedigkeit: 'Schlafe 15 Minuten früher oder mache eine kurze Mittagspause.',
+  langeweile: 'Halte eine kleine Alternativ-Aktivität griffbereit.',
+  sozial:     'Sprich offen mit Vertrauten über diesen Drang.',
+  ort:        'Verändere deine Umgebung, um den Auslöser zu schwächen.',
+  uhrzeit:    'Plane für deine Hochrisiko-Zeit eine Gegenmaßnahme ein.',
+  sonstiges:  'Beobachte weiter — Muster werden mit der Zeit sichtbar.',
+};
 
 function loginGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
@@ -1284,6 +1367,7 @@ function renderToday() {
           </div>
           ${h.temptationBundle&&!d?`<div style="font-size:11px;color:var(--warn);margin-top:3px">🎵 ${h.temptationBundle}</div>`:''}
         </div>
+        ${h.type==='break'?`<button class="trigger-btn" onclick="event.stopPropagation();openTriggerLog('${h.id}')">⚡ Drang</button>`:''}
       </div>`;
     }
 
@@ -1297,6 +1381,7 @@ function renderToday() {
         </div>
         ${h.temptationBundle&&!d?`<div style="font-size:11px;color:var(--warn);margin-top:3px">🎵 ${h.temptationBundle}</div>`:''}
       </div>
+      ${h.type==='break'?`<button class="trigger-btn" onclick="event.stopPropagation();openTriggerLog('${h.id}')">⚡ Drang</button>`:''}
     </div>`;
   }).join('');
 }
@@ -1385,6 +1470,7 @@ async function renderStats() {
       <div class="pbar"><div class="pfill ok" style="width:${arc}%"></div></div>
     </div>`;
   }).join('');
+  renderTriggerStats();
 }
 
 // ── CALENDAR ────────────────────────────────────────────────────────
@@ -2446,6 +2532,40 @@ async function openDetail(id) {
   }
   document.getElementById('del-btn').onclick  = () => deleteHabit(id);
   document.getElementById('edit-btn').onclick = () => { closeM('detail-m'); openEditHabit(id); };
+  // Trigger section
+  const dtw = document.getElementById('d-triggers-wrap');
+  if (h.type === 'break') {
+    dtw.style.display = 'block';
+    document.getElementById('d-triggers-list').innerHTML = '<div style="font-size:12px;color:var(--t3)">Lädt…</div>';
+    document.getElementById('d-triggers-more').style.display = 'none';
+    tref().where('habitId','==',id).get().then(snap => {
+      const entries = snap.docs.map(d=>d.data())
+        .sort((a,b)=>(b.date+(b.time||'')).localeCompare(a.date+(a.time||'')));
+      const list = document.getElementById('d-triggers-list');
+      if (!entries.length) { list.innerHTML='<div style="font-size:12px;color:var(--t3)">Noch keine Einträge. Tippe auf ⚡ Drang im Heute-View.</div>'; return; }
+      const renderItems = (arr) => arr.map(t => {
+        const ci = TRIG_CATS[t.category]||{icon:'❓',label:t.category};
+        const dl = t.date===TD ? `Heute ${t.time||''}` : `${t.date.split('-')[2]}.${t.date.split('-')[1]}. ${t.time||''}`;
+        return `<div class="trig-item">
+          <div class="trig-item-cat">${ci.icon}</div>
+          <div class="trig-item-info">
+            <div style="font-size:13px;font-weight:600;color:var(--t1)">${ci.label}</div>
+            <div style="font-size:11px;color:var(--t3)">${dl}${t.note?` · ${t.note.substring(0,40)}`:''}</div>
+          </div>
+          <div class="trig-item-badge ${t.resisted?'trig-badge-ok':'trig-badge-err'}">${t.resisted?'✓':'✗'}</div>
+        </div>`;
+      }).join('');
+      list.innerHTML = renderItems(entries.slice(0,3));
+      const more = document.getElementById('d-triggers-more');
+      if (entries.length > 3) {
+        more.style.display = 'block';
+        more.textContent = `→ Alle ${entries.length} Einträge anzeigen`;
+        more.onclick = () => { list.innerHTML = renderItems(entries); more.style.display='none'; };
+      }
+    }).catch(()=>{ document.getElementById('d-triggers-list').innerHTML=''; });
+  } else {
+    dtw.style.display = 'none';
+  }
   openM('detail');
   // async 30d rate (use last 10 days to stay within Firestore 'in' limit)
   const d10=[]; for(let i=9;i>=0;i--){const d=new Date(TODAY);d.setDate(d.getDate()-i);d10.push(d.toISOString().split('T')[0]);}
@@ -2682,7 +2802,7 @@ function nav(v) {
 }
 
 // ── MODAL HELPERS ───────────────────────────────────────────────────
-const MODAL_IDS = {habit:'habit-m',morning:'morning-m',evening:'evening-m',detail:'detail-m',goal:'goal-m',settings:'settings-m','tt-detail':'tt-detail-m'};
+const MODAL_IDS = {habit:'habit-m',morning:'morning-m',evening:'evening-m',detail:'detail-m',goal:'goal-m',settings:'settings-m','tt-detail':'tt-detail-m',trigger:'trigger-m'};
 function openM(k) {
   if(k==='settings') openM_settings();
   else document.getElementById(MODAL_IDS[k]||k).classList.add('open');
@@ -2791,6 +2911,127 @@ function confetti() {
     document.body.appendChild(el);
     setTimeout(()=>el.remove(),1600);
   }
+}
+
+// ── TRIGGER LOG ──────────────────────────────────────────────────────
+let trigHabitId_ = null, trigCat_ = null, trigResisted_ = null;
+
+function openTriggerLog(habitId) {
+  trigHabitId_ = habitId;
+  trigCat_ = null;
+  trigResisted_ = null;
+  document.getElementById('trig-note').value = '';
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('on'));
+  document.getElementById('resist-yes').className = 'resist-btn';
+  document.getElementById('resist-no').className  = 'resist-btn';
+  openM('trigger-m');
+}
+
+function selTrigCat(cat, btn) {
+  trigCat_ = cat;
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+}
+
+function selResisted(val) {
+  trigResisted_ = val;
+  document.getElementById('resist-yes').className = 'resist-btn' + (val  ? ' yes-on' : '');
+  document.getElementById('resist-no').className  = 'resist-btn' + (!val ? ' no-on'  : '');
+}
+
+async function saveTriggerLog() {
+  if (!trigCat_) { toast('Bitte wähle eine Kategorie.'); return; }
+  if (trigResisted_ === null) { toast('Bitte angeben ob du widerstanden hast.'); return; }
+  const note = document.getElementById('trig-note').value.trim().substring(0, 200) || null;
+  const now = new Date();
+  const time = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  try {
+    await tref().add({
+      habitId: trigHabitId_,
+      date: TD,
+      time,
+      category: trigCat_,
+      note,
+      resisted: trigResisted_,
+      ts: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    closeM('trigger-m');
+    if (trigResisted_) toast('Stark! Widerstand schwächt den Drang. 💪');
+    else toast('Eintrag gespeichert. Gut beobachtet! 👁');
+  } catch(e) { toast('Fehler: ' + e.message); }
+}
+
+async function renderTriggerStats() {
+  const el = document.getElementById('trigger-stats');
+  if (!el) return;
+  if (!habits.some(h => h.type === 'break')) { el.innerHTML = ''; return; }
+  try {
+    const snap = await tref().orderBy('ts','desc').limit(200).get();
+    const cutoff = new Date(TODAY); cutoff.setDate(cutoff.getDate()-30);
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+    const entries = snap.docs.map(d=>d.data()).filter(t=>t.date>=cutoffStr);
+    if (entries.length < 3) { el.innerHTML = ''; return; }
+
+    // Category counts
+    const catCounts = {};
+    entries.forEach(t => { catCounts[t.category] = (catCounts[t.category]||0)+1; });
+    const sortedCats = Object.entries(catCounts).sort((a,b)=>b[1]-a[1]);
+    const maxCat = sortedCats[0]?.[1]||1;
+
+    // Peak hour (2h blocks)
+    const hourCounts = {};
+    entries.forEach(t => {
+      if (t.time) {
+        const h = parseInt(t.time.split(':')[0]);
+        const block = Math.floor(h/2)*2;
+        const key = String(block).padStart(2,'0')+':00–'+String(block+2).padStart(2,'0')+':00';
+        hourCounts[key] = (hourCounts[key]||0)+1;
+      }
+    });
+    const topHour = Object.entries(hourCounts).sort((a,b)=>b[1]-a[1])[0];
+
+    // Resistance
+    const resisted = entries.filter(t=>t.resisted).length;
+    const total = entries.length;
+    const resistRate = Math.round(resisted/total*100);
+    const topCat = sortedCats[0]?.[0];
+    const insightTip = topCat ? TRIG_INSIGHTS[topCat]||'' : '';
+    const insightText = topCat
+      ? `Dein häufigster Auslöser ist <strong>${TRIG_CATS[topCat]?.label||topCat}</strong>${topHour?` — besonders ${topHour[0]} Uhr`:''}.<br>${insightTip}`
+      : '';
+
+    el.innerHTML = `
+      <div class="sec">DEIN TRIGGER-PROFIL</div>
+      <div class="card">
+        <div style="font-size:13px;font-weight:700;margin-bottom:12px">Auslöser-Verteilung <span style="font-weight:400;color:var(--t3);font-size:11px">(letzte 30 Tage)</span></div>
+        ${sortedCats.map(([cat,count])=>{
+          const ci=TRIG_CATS[cat]||{icon:'❓',label:cat};
+          const pct=Math.round(count/maxCat*100);
+          return `<div class="tbar-wrap">
+            <div class="tbar-label"><span>${ci.icon} ${ci.label}</span><span style="color:var(--t2)">${count}×</span></div>
+            <div class="tbar-bg"><div class="tbar-fill" style="width:${pct}%"></div></div>
+          </div>`;
+        }).join('')}
+      </div>
+      ${topHour?`<div class="card">
+        <div style="font-size:13px;font-weight:700;margin-bottom:5px">Häufigste Uhrzeit</div>
+        <div style="font-size:13px;color:var(--t2)">Deine Hochrisiko-Zeit: <strong style="color:var(--t1)">${topHour[0]} Uhr</strong></div>
+        <div style="font-size:11px;color:var(--t3);margin-top:3px">(${topHour[1]} von ${total} Drängen)</div>
+      </div>`:''}
+      <div class="card">
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px">Widerstandsrate</div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px">
+          <span style="color:var(--ok)">✓ Widerstanden: ${resisted}× (${resistRate}%)</span>
+          <span style="color:var(--err)">✗ Nachgegeben: ${total-resisted}× (${100-resistRate}%)</span>
+        </div>
+        <div class="pbar"><div class="pfill ok" style="width:${resistRate}%"></div></div>
+      </div>
+      ${insightText?`<div class="insight-card">
+        <div class="insight-title">💡 Erkenntnis</div>
+        <div class="insight-text">${insightText}</div>
+      </div>`:''}
+    `;
+  } catch(e) { el.innerHTML = ''; }
 }
 
 // ── TOAST ────────────────────────────────────────────────────────────
