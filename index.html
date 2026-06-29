@@ -2079,7 +2079,7 @@ async function createCalendarEvent() {
 }
 
 // ── TICKTICK ──────────────────────────────────────────────────────────
-let ttTasks = [], ttProjects = [], ttProjectData = [], calTodayCount = 0;
+let ttTasks = [], ttAllTasks = [], ttProjects = [], ttProjectData = [], calTodayCount = 0;
 let top3TaskIds = [], top3Selecting = [], top3FromMorning = false, top3CreatingNew = false;
 const TT_BASE = 'https://api.ticktick.com/open/v1';
 
@@ -2180,7 +2180,7 @@ function saveTTCreds() {
 
 function disconnectTT(silent) {
   ['hf_tt_token','hf_tt_refresh','hf_tt_expiry'].forEach(k => localStorage.removeItem(k));
-  ttTasks = []; ttProjects = []; ttProjectData = [];
+  ttTasks = []; ttAllTasks = []; ttProjects = []; ttProjectData = [];
   renderTTTasks(); renderTTProjects(); renderDaySummary(); updateTTSettingsUI();
   if (!silent) toast('TickTick getrennt');
 }
@@ -2197,11 +2197,13 @@ async function loadTTData() {
     })
   );
 
-  ttTasks = ttProjectData.flatMap(r => r.tasks).filter(t => {
+  const allFlat = ttProjectData.flatMap(r => r.tasks);
+  ttTasks = allFlat.filter(t => {
     if (!t.dueDate) return false;
     const taskDate = ttLocalDate(t.dueDate);
     return taskDate !== null && taskDate <= TDLocal; // today + overdue
   });
+  ttAllTasks = allFlat.filter(t => t.status !== 2);
   renderTTTasks(); renderTTProjects(); renderDaySummary();
 }
 
@@ -2469,9 +2471,11 @@ async function createTTTask() {
 
   if (result && result.id) {
     const taskDate = ttLocalDate(result.dueDate || body.dueDate || '');
+    const proj = ttProjects.find(p => p.id === projId);
+    const enriched = {...result, _projectName: proj?.name || '', projectId: projId || result.projectId};
+    ttAllTasks.push(enriched);
     if (taskDate && taskDate <= TDLocal) {
-      const proj = ttProjects.find(p => p.id === projId);
-      ttTasks.push({...result, _projectName: proj?.name || '', projectId: projId || result.projectId});
+      ttTasks.push(enriched);
       renderTTTasks();
       renderDaySummary();
     }
@@ -2519,19 +2523,32 @@ function closeTop3Modal() {
 function renderTop3ModalList() {
   const list = document.getElementById('top3-list');
   if (!list) return;
-  const open = ttTasks.filter(t => t.status !== 2);
-  const done_ = ttTasks.filter(t => t.status === 2);
-  const sorted = [...open.sort((a,b) => (b.priority||0)-(a.priority||0)), ...done_];
+  // Sort: overdue/today by priority, then future by priority, then no-date by priority
+  const bucket = t => {
+    if (!t.dueDate) return 2;
+    const d = ttLocalDate(t.dueDate);
+    return d <= TDLocal ? 0 : 1;
+  };
+  const sorted = [...ttAllTasks].sort((a,b) => {
+    const bd = bucket(a) - bucket(b);
+    if (bd !== 0) return bd;
+    return (b.priority||0) - (a.priority||0);
+  });
   if (!sorted.length) {
-    list.innerHTML = `<div style="text-align:center;color:var(--t2);font-size:13px;padding:16px 0">Keine Tasks heute fällig</div>`;
+    list.innerHTML = `<div style="text-align:center;color:var(--t2);font-size:13px;padding:16px 0">Keine offenen Tasks in TickTick</div>`;
   } else {
     list.innerHTML = sorted.map(t => {
       const sel = top3Selecting.includes(t.id);
       const disabled = !sel && top3Selecting.length >= 3;
       const proj = t._projectName || '';
+      const dateLabel = t.dueDate ? formatTTDueDate(t.dueDate) : '';
+      const overdue = dateLabel.startsWith('⚠');
       return `<div class="top3-sel-item${sel?' selected':''}${disabled?' disabled':''}" onclick="top3ToggleSel('${t.id}')">
         <div class="top3-sel-cb${sel?' on':''}"></div>
-        <div style="flex:1;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.title||'–'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.title||'–'}</div>
+          ${dateLabel ? `<div style="font-size:11px;margin-top:1px;color:${overdue?'var(--err)':'var(--t3)'}">${dateLabel}</div>` : ''}
+        </div>
         ${proj ? `<span class="tt-tag">${proj}</span>` : ''}
       </div>`;
     }).join('');
