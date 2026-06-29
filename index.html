@@ -294,6 +294,21 @@
   .sum-item{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-weight:600}
   .sum-sep{color:var(--t3);padding:0 4px}
 
+  /* TOP 3 */
+  .top3-card{border-radius:var(--r);border:1px solid rgba(124,111,247,.25);background:rgba(124,111,247,.05);border-left:3px solid var(--p);overflow:hidden}
+  .top3-row{display:flex;align-items:center;padding:11px 14px;gap:12px;border-bottom:1px solid rgba(124,111,247,.1);transition:background .15s}
+  .top3-row:last-child{border-bottom:none}
+  .top3-row.done .tt-title{opacity:.4;text-decoration:line-through}
+  .top3-card.all-done{border-color:rgba(45,212,160,.35);background:rgba(45,212,160,.05);border-left-color:var(--ok)}
+  .top3-sel-item{display:flex;align-items:center;padding:12px 4px;gap:12px;border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .1s}
+  .top3-sel-item:last-child{border-bottom:none}
+  .top3-sel-item:active{background:var(--s2)}
+  .top3-sel-item.selected{background:rgba(124,111,247,.06)}
+  .top3-sel-item.disabled{opacity:.4;pointer-events:none}
+  .top3-sel-cb{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .18s}
+  .top3-sel-cb.on{background:var(--p);border-color:var(--p)}
+  .top3-sel-cb.on::after{content:'★';font-size:9px;color:#fff;line-height:1}
+
   /* FLEXIBLE FREQUENCY */
   .cc.week-done{border-color:var(--ok);background:rgba(45,212,160,.15)}
   .cc.week-done::after{content:'✓';font-size:11px;color:var(--ok);font-weight:800;line-height:1}
@@ -408,6 +423,7 @@
         <p>Wie war dein Tag? Reflexion festigt Gewohnheiten.</p>
         <button class="ci-btn" onclick="openM('evening')">Tag abschließen</button>
       </div>
+      <div id="top3-section"></div>
       <div class="sec">HEUTE</div>
       <div id="today-list"></div>
       <div id="tt-today-section"></div>
@@ -603,7 +619,25 @@
       <label class="lbl">Wichtigste Intention für heute</label>
       <input id="morning-inp" class="inp" placeholder="Heute möchte ich..." maxlength="140">
     </div>
-    <button class="btn btn-p btn-w" onclick="saveMorning()">Tag starten 🚀</button>
+    <button class="btn btn-p btn-w" onclick="saveMorning()">Weiter →</button>
+  </div>
+</div>
+
+<!-- Top 3 Selection -->
+<div id="top3-m" class="mwrap" onclick="mclick(event,'top3-m')">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <h2 style="margin-bottom:0">★ Deine Top 3</h2>
+      <span id="top3-count-badge" style="font-size:14px;font-weight:700;color:var(--t2)">0/3</span>
+    </div>
+    <p style="font-size:13px;color:var(--t2);margin-bottom:14px;line-height:1.5">Welche 3 Aufgaben haben heute höchste Priorität?</p>
+    <div id="top3-list" style="max-height:260px;overflow-y:auto;margin-bottom:10px"></div>
+    <button onclick="openCreateTTTaskForTop3()" style="width:100%;background:none;border:1px dashed var(--border);border-radius:var(--rs);color:var(--p);font-size:14px;font-weight:600;padding:10px;cursor:pointer;font-family:inherit;margin-bottom:12px;transition:background .15s" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background='none'">+ Neue Aufgabe erstellen</button>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-g" style="flex:1" onclick="closeTop3Modal()">Überspringen</button>
+      <button class="btn btn-p" style="flex:2" onclick="saveTop3()">Fertig ✓</button>
+    </div>
   </div>
 </div>
 
@@ -1177,6 +1211,7 @@ async function loadToday() {
   saveLocal('todayComp_' + TD, todayComp);
   const ld = await dref().doc(TD).get();
   todayLog = ld.exists ? ld.data() : {};
+  top3TaskIds = todayLog.top3TaskIds || [];
   if (todayLog.morningIntention) document.getElementById('morning-prev').textContent = `"${todayLog.morningIntention}"`;
 }
 
@@ -2045,6 +2080,7 @@ async function createCalendarEvent() {
 
 // ── TICKTICK ──────────────────────────────────────────────────────────
 let ttTasks = [], ttProjects = [], ttProjectData = [], calTodayCount = 0;
+let top3TaskIds = [], top3Selecting = [], top3FromMorning = false, top3CreatingNew = false;
 const TT_BASE = 'https://api.ticktick.com/open/v1';
 
 function ttCreds() {
@@ -2225,16 +2261,18 @@ function renderTTTasks() {
     const proj = t._projectName || '';
     const dateLabel = formatTTDueDate(t.dueDate);
     const overdue = dateLabel.startsWith('⚠');
+    const isTop3 = top3TaskIds.includes(t.id);
     return `<div class="tt-task${done?' done':''}" data-tid="${t.id}" onclick="openTTTaskDetail('${t.id}')">
       <div class="tt-cb${done?' done':''}" onclick="event.stopPropagation();toggleTTTask('${t.projectId}','${t.id}',this.closest('.tt-task'))"></div>
       ${pc ? `<div class="tt-prio" style="background:${pc}"></div>` : ''}
       <div class="htext" style="flex:1;min-width:0">
-        <div class="tt-title">${t.title||'–'}</div>
+        <div class="tt-title">${t.title||'–'}${isTop3?` <span style="color:var(--warn);font-size:11px" title="Top 3 heute">★</span>`:''}</div>
         ${dateLabel ? `<div style="font-size:11px;margin-top:2px;color:${overdue?'var(--err)':'var(--t2)'}">${dateLabel}</div>` : ''}
       </div>
       ${proj ? `<span class="tt-tag">${proj}</span>` : ''}
     </div>`;
   }).join('');
+  renderTop3Section();
 }
 
 async function toggleTTTask(projectId, taskId, rowEl) {
@@ -2402,7 +2440,7 @@ function updateTTSettingsUI() {
 }
 
 function openCreateTTTask() {
-  if (!localStorage.getItem('hf_tt_token')) { openM('settings'); return; }
+  if (!localStorage.getItem('hf_tt_token')) { top3CreatingNew = false; openM('settings'); return; }
   document.getElementById('tt-new-title').value = '';
   document.getElementById('tt-new-date').value = TDLocal;
   document.getElementById('tt-new-prio').value = '0';
@@ -2419,6 +2457,8 @@ async function createTTTask() {
   const prio  = parseInt(document.getElementById('tt-new-prio').value);
   const saveBtn = document.querySelector('#tt-task-m .btn-p');
   if (saveBtn) { saveBtn.textContent = '…'; saveBtn.disabled = true; }
+  const wasTop3 = top3CreatingNew;
+  top3CreatingNew = false;
 
   const body = { title, priority: prio };
   if (projId) body.projectId = projId;
@@ -2436,7 +2476,14 @@ async function createTTTask() {
       renderDaySummary();
     }
     document.getElementById('tt-task-m').classList.remove('open');
-    toast('✅ Task erstellt!');
+    if (wasTop3) {
+      if (top3Selecting.length < 3 && !top3Selecting.includes(result.id)) {
+        top3Selecting.push(result.id);
+      }
+      renderTop3ModalList();
+    } else {
+      toast('✅ Task erstellt!');
+    }
   } else {
     toast('Fehler beim Erstellen — bitte erneut versuchen');
   }
@@ -2449,6 +2496,125 @@ async function initTickTick() {
     renderTTTasks();
   }
   renderDaySummary();
+}
+
+// ── TOP 3 ────────────────────────────────────────────────────────────
+function openTop3Modal(fromMorning) {
+  if (!localStorage.getItem('hf_tt_token')) {
+    if (fromMorning) toast('🌅 Schönen Tag!');
+    return;
+  }
+  top3FromMorning = fromMorning || false;
+  top3Selecting = [...top3TaskIds];
+  renderTop3ModalList();
+  document.getElementById('top3-m').classList.add('open');
+}
+
+function closeTop3Modal() {
+  document.getElementById('top3-m').classList.remove('open');
+  if (top3FromMorning) toast('🌅 Schönen Tag!');
+  top3FromMorning = false;
+}
+
+function renderTop3ModalList() {
+  const list = document.getElementById('top3-list');
+  if (!list) return;
+  const open = ttTasks.filter(t => t.status !== 2);
+  const done_ = ttTasks.filter(t => t.status === 2);
+  const sorted = [...open.sort((a,b) => (b.priority||0)-(a.priority||0)), ...done_];
+  if (!sorted.length) {
+    list.innerHTML = `<div style="text-align:center;color:var(--t2);font-size:13px;padding:16px 0">Keine Tasks heute fällig</div>`;
+  } else {
+    list.innerHTML = sorted.map(t => {
+      const sel = top3Selecting.includes(t.id);
+      const disabled = !sel && top3Selecting.length >= 3;
+      const proj = t._projectName || '';
+      return `<div class="top3-sel-item${sel?' selected':''}${disabled?' disabled':''}" onclick="top3ToggleSel('${t.id}')">
+        <div class="top3-sel-cb${sel?' on':''}"></div>
+        <div style="flex:1;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.title||'–'}</div>
+        ${proj ? `<span class="tt-tag">${proj}</span>` : ''}
+      </div>`;
+    }).join('');
+  }
+  const badge = document.getElementById('top3-count-badge');
+  if (badge) badge.textContent = `${top3Selecting.length}/3`;
+}
+
+function top3ToggleSel(taskId) {
+  const idx = top3Selecting.indexOf(taskId);
+  if (idx >= 0) {
+    top3Selecting.splice(idx, 1);
+  } else if (top3Selecting.length < 3) {
+    top3Selecting.push(taskId);
+  }
+  renderTop3ModalList();
+}
+
+async function saveTop3() {
+  top3TaskIds = [...top3Selecting];
+  todayLog.top3TaskIds = top3TaskIds;
+  await dref().doc(TD).set({top3TaskIds, date:TD},{merge:true});
+  document.getElementById('top3-m').classList.remove('open');
+  renderTop3Section();
+  renderTTTasks();
+  if (top3FromMorning) { top3FromMorning = false; toast('🌅 Schönen Tag!'); }
+  else toast('★ Top 3 gespeichert!');
+}
+
+function renderTop3Section() {
+  const sec = document.getElementById('top3-section');
+  if (!sec) return;
+  if (!localStorage.getItem('hf_tt_token') || !top3TaskIds.length) { sec.innerHTML = ''; return; }
+  const top3Tasks = top3TaskIds.map(id => ttTasks.find(t => t.id === id)).filter(Boolean);
+  if (!top3Tasks.length) { sec.innerHTML = ''; return; }
+  const allDone = top3Tasks.every(t => t.status === 2);
+  const rows = top3Tasks.map(t => {
+    const done = t.status === 2;
+    const proj = t._projectName || '';
+    return `<div class="top3-row${done?' done':''}">
+      <div class="tt-cb${done?' done':''}" onclick="toggleTop3Task('${t.projectId}','${t.id}')"></div>
+      <div class="tt-title" style="flex:1">${t.title||'–'}</div>
+      ${proj ? `<span class="tt-tag">${proj}</span>` : ''}
+    </div>`;
+  }).join('');
+  sec.innerHTML = `<div style="margin:0 16px 10px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--p);padding:12px 0 8px;display:flex;align-items:center;gap:6px">
+      <span>★</span><span style="flex:1">TOP 3 HEUTE</span>
+      <button onclick="openTop3Modal(false)" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:14px;padding:3px 6px;border-radius:6px;transition:background .15s;font-family:inherit" title="Top 3 bearbeiten">✏️</button>
+    </div>
+    <div class="top3-card${allDone?' all-done':''}">
+      ${rows}
+    </div>
+    ${allDone ? `<div style="text-align:center;font-size:13px;font-weight:700;color:var(--ok);margin-top:8px">Top 3 geschafft — starker Tag! 🏆</div>` : ''}
+  </div>`;
+}
+
+async function toggleTop3Task(projectId, taskId) {
+  const t = ttTasks.find(x => x.id === taskId);
+  if (!t || t.status === 2) return;
+  t.status = 2;
+  renderTop3Section();
+  renderTTTasks();
+  renderDaySummary();
+  const ok = await ttFetch('/project/' + projectId + '/task/' + taskId + '/complete', {method: 'POST'});
+  if (ok !== null) {
+    confetti();
+    const top3Tasks = top3TaskIds.map(id => ttTasks.find(x => x.id === id)).filter(Boolean);
+    const allDone = top3Tasks.every(x => x.status === 2);
+    renderTop3Section();
+    toast(allDone ? 'Top 3 geschafft — starker Tag! 🏆' : '✓ Task erledigt!');
+  } else {
+    t.status = 0;
+    renderTop3Section();
+    renderTTTasks();
+    renderDaySummary();
+    toast('Fehler beim Synchronisieren mit TickTick');
+  }
+}
+
+function openCreateTTTaskForTop3() {
+  top3CreatingNew = true;
+  openCreateTTTask();
 }
 
 // ── HABIT CRUD ──────────────────────────────────────────────────────
@@ -2561,7 +2727,12 @@ async function saveMorning() {
   await dref().doc(TD).set({morningIntention:v,date:TD},{merge:true});
   todayLog.morningIntention=v;
   document.getElementById('morning-prev').textContent=`"${v}"`;
-  closeM('morning'); toast('🌅 Schönen Tag!');
+  closeM('morning');
+  if (localStorage.getItem('hf_tt_token')) {
+    openTop3Modal(true);
+  } else {
+    toast('🌅 Schönen Tag!');
+  }
 }
 
 function setR(r) { selRating=r; document.querySelectorAll('.rbtn').forEach((b,i)=>b.classList.toggle('on',i<r)); }
@@ -2874,10 +3045,13 @@ function nav(v) {
 }
 
 // ── MODAL HELPERS ───────────────────────────────────────────────────
-const MODAL_IDS = {habit:'habit-m',morning:'morning-m',evening:'evening-m',detail:'detail-m',goal:'goal-m',settings:'settings-m','tt-detail':'tt-detail-m',trigger:'trigger-m'};
+const MODAL_IDS = {habit:'habit-m',morning:'morning-m',evening:'evening-m',detail:'detail-m',goal:'goal-m',settings:'settings-m','tt-detail':'tt-detail-m',trigger:'trigger-m',top3:'top3-m'};
 function openM(k) {
   if(k==='settings') openM_settings();
-  else document.getElementById(MODAL_IDS[k]||k).classList.add('open');
+  else {
+    if(k==='morning' && todayLog.morningIntention) document.getElementById('morning-inp').value = todayLog.morningIntention;
+    document.getElementById(MODAL_IDS[k]||k).classList.add('open');
+  }
 }
 function closeM(k) { document.getElementById(MODAL_IDS[k]||k).classList.remove('open'); }
 function mclick(e,id) { if(e.target.id===id) closeM(id); }
