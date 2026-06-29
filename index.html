@@ -1023,7 +1023,7 @@ function setDateHeader() {
   document.getElementById('datestr').textContent = `${DAYS[d.getDay()]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
   let g = HR < 5 ? 'Gute Nacht, Felix🌙' : HR < 12 ? 'Guten Morgen, Felix! 🌅' : HR < 17 ? 'Guten Tag! ☀️' : HR < 21 ? 'Guten Abend, Felix! 🌆' : 'Gute Nacht, Felix🌙';
   document.getElementById('greeting').textContent = g;
-  if (HR >= 5 && HR < 11) document.getElementById('morning-card').style.display = 'block';
+  if (HR >= 5 && HR < 18) document.getElementById('morning-card').style.display = 'block';
   if (HR >= 18)           document.getElementById('evening-card').style.display = 'block';
 }
 
