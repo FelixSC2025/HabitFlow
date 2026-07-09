@@ -10,6 +10,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
   <style>
   :root {
     --bg:#f5f5fa; --s1:#ffffff; --s2:#ededf5; --s3:#e0e0ee;
@@ -506,13 +507,14 @@
     <div class="hdr">
       <h1>Kalender</h1>
       <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-g btn-sm" id="cal-recalc-btn" onclick="recalcSchedule()" title="Auto-Scheduling neu berechnen">⟳ Neu berechnen</button>
         <button class="icon-btn" id="cal-refresh-btn" onclick="refreshCalendar()">⟳</button>
       </div>
     </div>
     <div class="scroll">
       <div id="cal-content"></div>
     </div>
-    <button class="fab" id="cal-add-btn" onclick="openAddCalEvent()" title="Event hinzufügen">+</button>
+    <button class="fab" id="cal-add-btn" onclick="openCalAdd()" title="Task oder Termin hinzufügen">+</button>
     <nav class="bnav">
       <button class="nb" onclick="nav('t')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Heute</button>
       <button class="nb" onclick="nav('h')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/></svg>Gewohnheiten</button>
@@ -797,6 +799,13 @@
       <input id="claude-key" class="inp" type="password" placeholder="sk-ant-...">
       <div class="hint">Optional. Nur lokal gespeichert. Kostenlos auf console.anthropic.com</div>
     </div>
+    <div class="fg">
+      <label class="lbl">FlowSavvy API-Key (Kalender & Auto-Scheduling)</label>
+      <input id="fs-key" class="inp" type="password" placeholder="FlowSavvy API-Key">
+      <div class="hint">Erfordert FlowSavvy <b>Pro</b>. Key erstellen unter <a href="https://my.flowsavvy.app/api/docs" target="_blank" style="color:var(--p)">my.flowsavvy.app/api/docs</a>. Nur lokal gespeichert.</div>
+      <div id="fs-status" style="font-size:13px;margin:8px 0;display:none"></div>
+      <button class="btn btn-g btn-sm" style="width:100%" onclick="testFlowSavvy()">Verbinden / Testen →</button>
+    </div>
     <div style="display:flex;gap:10px;margin-bottom:16px">
       <button class="btn btn-p" style="flex:1" onclick="saveSettings()">Speichern</button>
     </div>
@@ -925,6 +934,63 @@
   </div>
 </div>
 
+<!-- Kalender: Auswahl Task/Event -->
+<div id="cal-add-choice" class="mwrap" onclick="mclick(event,'cal-add-choice')">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <h2>Was möchtest du hinzufügen?</h2>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-top:8px">
+      <button class="btn btn-p" onclick="chooseCalAdd('task')">🧩 Task (wird eingeplant)</button>
+      <button class="btn btn-g" onclick="chooseCalAdd('event')">📅 Termin (feste Zeit)</button>
+    </div>
+  </div>
+</div>
+
+<!-- FlowSavvy Task erstellen -->
+<div id="fs-task-m" class="mwrap" onclick="mclick(event,'fs-task-m')">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <h2>🧩 Task erstellen</h2>
+    <div class="fg">
+      <label class="lbl">Titel</label>
+      <input id="fs-task-title" class="inp" placeholder="Was soll erledigt werden?" maxlength="200">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="fg">
+        <label class="lbl">Dauer (Min.)</label>
+        <input id="fs-task-dur" class="inp" type="number" min="5" step="5" value="30">
+      </div>
+      <div class="fg">
+        <label class="lbl">Fällig am (optional)</label>
+        <input id="fs-task-due" class="inp" type="date">
+      </div>
+    </div>
+    <div class="fg">
+      <label class="lbl">Priorität</label>
+      <select id="fs-task-prio" class="inp">
+        <option value="low">Niedrig</option>
+        <option value="normal" selected>Normal</option>
+        <option value="high">Hoch</option>
+        <option value="asap">ASAP</option>
+      </select>
+    </div>
+    <div class="fg" style="display:flex;align-items:center;justify-content:space-between;padding:4px 0">
+      <label class="lbl" style="margin:0">Automatisch einplanen</label>
+      <button id="fs-task-auto-btn" onclick="toggleFsTaskAuto()" style="width:44px;height:26px;border-radius:13px;background:var(--ok);border:none;cursor:pointer;transition:background .2s;position:relative;flex-shrink:0">
+        <span id="fs-task-auto-knob" style="position:absolute;top:3px;left:21px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.2)"></span>
+      </button>
+    </div>
+    <div class="fg">
+      <label class="lbl">Notizen (optional)</label>
+      <textarea id="fs-task-notes" class="inp" placeholder="Details…" style="min-height:52px"></textarea>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-g" style="flex:1" onclick="closeM('fs-task-m')">Abbrechen</button>
+      <button class="btn btn-p" style="flex:2" id="fs-task-save" onclick="createFsTask()">Erstellen ✓</button>
+    </div>
+  </div>
+</div>
+
 <!-- Weekly Review -->
 <div id="wr-modal" class="wr-wrap" onclick="wrBackdropClick(event)">
   <div class="wr-inner">
@@ -983,7 +1049,7 @@ const CHALLENGES = [
 ];
 
 // ── STATE ──────────────────────────────────────────────────────────
-let db, auth, uid, messaging;
+let db, auth, uid, messaging, fsFns;
 let swReg = null;
 let fcmListenerSet = false;
 // ↓ VAPID-Key aus Firebase Console → Projekteinstellungen → Cloud Messaging → Web-Push-Zertifikate
@@ -1017,6 +1083,7 @@ function initFB(cfg) {
     });
     auth = firebase.auth();
     try { messaging = firebase.messaging(); } catch(e) {}
+    try { fsFns = firebase.functions(); } catch(e) {}
     auth.onAuthStateChanged(onAuth);
   } catch(e) { toast('Firebase-Fehler: ' + e.message); }
 }
@@ -1066,12 +1133,7 @@ const TRIG_INSIGHTS = {
 
 function loginGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
-  provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
-  provider.addScope('https://www.googleapis.com/auth/calendar.events');
-  auth.signInWithPopup(provider).then(result => {
-    const token = result.credential?.accessToken;
-    if (token) storeCalToken(token);
-  }).catch(e => toast(e.message));
+  auth.signInWithPopup(provider).catch(e => toast(e.message));
 }
 function loginAnon()   { auth.signInAnonymously().catch(e=>toast(e.message)); }
 function signOut()     { auth.signOut(); closeM('settings-m'); }
@@ -1131,10 +1193,6 @@ async function startApp() {
   checkWeeklyReview();
   habits.filter(h => h.freqType && h.freqType !== 'daily').forEach(h => checkWeeklyStreak(h).catch(()=>{}));
   initTickTick();
-  if (localStorage.getItem('hf_cal_token') && !localStorage.getItem('hf_cal_expiry')) {
-    localStorage.setItem('hf_cal_expiry', String(Date.now() + 3540 * 1000));
-  }
-  if (localStorage.getItem('hf_cal_token') || localStorage.getItem('hf_cal_connected')) loadCalendarEvents();
   scheduleNotifications();
 }
 
@@ -1581,141 +1639,72 @@ async function toggleDay(habitId, day, cellEl) {
 }
 
 // ── CALENDAR ────────────────────────────────────────────────────────
-function storeCalToken(token) {
-  localStorage.setItem('hf_cal_token', token);
-  localStorage.setItem('hf_cal_expiry', String(Date.now() + 3540 * 1000)); // 59 min
+// Dünner Aufruf über den Cloud-Function-Proxy (löst fehlendes CORS der FlowSavvy-API).
+async function fsFetch(method, path, body) {
+  const apiKey = localStorage.getItem('hf_fs_key');
+  if (!apiKey) throw new Error('no-key');
+  if (!fsFns) throw new Error('functions-not-ready');
+  const res = await fsFns.httpsCallable('flowsavvy')({ method, path, body: body || null, apiKey });
+  const { status, ok, data } = res.data || {};
+  if (!ok) { const err = new Error('api'); err.status = status; err.data = data; throw err; }
+  return data;
 }
 
-function isCalTokenExpired() {
-  return Date.now() >= parseInt(localStorage.getItem('hf_cal_expiry') || '0') - 60000;
+function fsConnected() { return !!localStorage.getItem('hf_fs_key'); }
+
+// yyyy-MM-dd (Ortszeit)
+function fsDateStr(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 
-async function silentCalRefresh() {
-  if (!auth?.currentUser) return false;
-  try {
-    const p = new firebase.auth.GoogleAuthProvider();
-    p.addScope('https://www.googleapis.com/auth/calendar.readonly');
-    p.addScope('https://www.googleapis.com/auth/calendar.events');
-    p.setCustomParameters({ prompt: 'none' });
-    const r = await auth.signInWithPopup(p);
-    const t = r.credential?.accessToken;
-    if (t) { storeCalToken(t); return true; }
-  } catch(e) {}
-  return false;
-}
-
-async function loadCalendarEvents(tryRefresh = true) {
-  let token = localStorage.getItem('hf_cal_token');
-  if (!token) {
-    if (tryRefresh && localStorage.getItem('hf_cal_connected')) {
-      const ok = await tryRefreshCalToken();
-      if (ok) { loadCalendarEvents(false); return; }
-    }
-    renderCalendarNoAuth();
-    return;
+// FlowSavvy ScheduleItem -> internes Event-Format (kompatibel mit renderCalendar/renderCalEvent)
+function fsScheduleToEvent(si) {
+  const isTask = si.itemType === 'task';
+  const color = isTask
+    ? (si.isAutoScheduled ? '#7c6cff' : '#5b8def')
+    : 'var(--p)';
+  const base = { summary: si.title || '(Kein Titel)', _calColor: color, _isTask: isTask, _auto: !!si.isAutoScheduled, _done: !!si.completed };
+  if (si.allDay) {
+    return { ...base, start: { date: (si.startTime || '').slice(0,10) }, end: { date: (si.endTime || si.startTime || '').slice(0,10) } };
   }
+  return { ...base, start: { dateTime: si.startTime }, end: { dateTime: si.endTime } };
+}
 
+async function loadSchedule(showSpinner = true) {
+  if (!fsConnected()) { renderCalendarNoAuth(); return; }
   const btn = document.getElementById('cal-refresh-btn');
-  if (btn) btn.innerHTML = '<span class="cal-spin">⟳</span>';
-
-  const todayStart = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate(), 0, 0, 0);
-  const weekEnd    = new Date(TODAY.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const headers    = { Authorization: `Bearer ${token}` };
-
+  if (showSpinner && btn) btn.innerHTML = '<span class="cal-spin">⟳</span>';
   try {
-    // 1. Alle Kalender des Users laden (inkl. Outlook, Feiertage, etc.)
-    const listR = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', { headers });
-    if (listR.status === 401) {
-      localStorage.removeItem('hf_cal_token');
-      if (btn) btn.innerHTML = '⟳';
-      if (tryRefresh) {
-        const ok = await tryRefreshCalToken();
-        if (ok) { loadCalendarEvents(false); return; }
-      }
-      renderCalendarNoAuth();
-      return;
-    }
-    const listData = await listR.json();
-    if (!listR.ok) {
-      renderCalendarApiError(listData?.error?.message || `API-Fehler ${listR.status}`, listR.status);
-      if (btn) btn.innerHTML = '⟳';
-      return;
-    }
-
-    // 2. Nur sichtbare/aktivierte Kalender
-    const cals = (listData.items || []).filter(c => c.selected !== false);
-
-    // 3. Events aller Kalender parallel laden
-    const results = await Promise.all(cals.map(async cal => {
-      try {
-        const r = await fetch(
-          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events` +
-          `?timeMin=${todayStart.toISOString()}&timeMax=${weekEnd.toISOString()}` +
-          `&singleEvents=true&orderBy=startTime&maxResults=50`,
-          { headers }
-        );
-        if (!r.ok) return [];
-        const data = await r.json();
-        return (data.items || []).map(ev => ({
-          ...ev,
-          _calColor: cal.backgroundColor || 'var(--p)',
-          _calName:  cal.summary
-        }));
-      } catch(e) { return []; }
-    }));
-
-    // 4. Zusammenführen & nach Startzeit sortieren
-    const allEvents = results.flat().sort((a, b) => {
-      const as = a.start.dateTime || a.start.date || '';
-      const bs = b.start.dateTime || b.start.date || '';
-      return as.localeCompare(bs);
-    });
-
-    renderCalendar(allEvents);
+    const start = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+    const end   = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const path  = `/api/schedule?startDate=${fsDateStr(start)}&endDate=${fsDateStr(end)}`;
+    const data  = await fsFetch('GET', path);
+    const items = (data?.scheduleItems || []).map(fsScheduleToEvent);
+    items.sort((a, b) => (a.start.dateTime || a.start.date || '').localeCompare(b.start.dateTime || b.start.date || ''));
+    renderCalendar(items);
   } catch(e) {
-    renderCalendarError();
+    if (e.message === 'no-key') renderCalendarNoAuth();
+    else if (e.status === 401 || e.status === 403) renderCalendarApiError('API-Key ungültig oder kein FlowSavvy Pro.', e.status);
+    else renderCalendarError();
   }
   if (btn) btn.innerHTML = '⟳';
 }
 
-function refreshCalendar() {
-  if (isCalTokenExpired() && localStorage.getItem('hf_cal_connected')) {
-    silentCalRefresh().then(ok => ok ? loadCalendarEvents(false) : loadCalendarEvents());
-  } else {
-    loadCalendarEvents();
-  }
-}
+function refreshCalendar() { loadSchedule(); }
 
-async function tryRefreshCalToken() {
-  if (!auth?.currentUser) return false;
+// Auto-Scheduling in FlowSavvy neu berechnen lassen
+async function recalcSchedule() {
+  if (!fsConnected()) { toast('Bitte zuerst FlowSavvy-Key in Einstellungen hinterlegen'); return; }
+  const btn = document.getElementById('cal-recalc-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="cal-spin">⟳</span>'; }
   try {
-    const p = new firebase.auth.GoogleAuthProvider();
-    p.addScope('https://www.googleapis.com/auth/calendar.readonly');
-    p.addScope('https://www.googleapis.com/auth/calendar.events');
-    p.setCustomParameters({ prompt: 'none' });
-    const r = await auth.signInWithPopup(p);
-    const t = r.credential?.accessToken;
-    if (t) { storeCalToken(t); return true; }
-  } catch(e) {}
-  return false;
-}
-
-function connectCalendar() {
-  const provider = new firebase.auth.GoogleAuthProvider();
-  provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
-  provider.addScope('https://www.googleapis.com/auth/calendar.events');
-  provider.setCustomParameters({ prompt: 'select_account' });
-  auth.signInWithPopup(provider).then(result => {
-    const token = result.credential?.accessToken;
-    if (token) {
-      storeCalToken(token);
-      localStorage.setItem('hf_cal_connected', '1');
-      loadCalendarEvents();
-      toast('✅ Kalender verbunden!');
-    } else {
-      toast('Kein Token erhalten — bitte nochmals versuchen');
-    }
-  }).catch(e => toast(e.message));
+    await fsFetch('POST', '/api/recalculate', {});
+    toast('✅ Plan neu berechnet');
+    await loadSchedule(false);
+  } catch(e) {
+    toast('Fehler beim Neuberechnen: ' + (e.data?.message || e.message));
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = '⟳ Neu berechnen'; }
 }
 
 function fmtTime(dtStr) {
@@ -1787,15 +1776,17 @@ function renderCalEvent(ev) {
   const allDay   = !ev.start.dateTime;
   const timeStr  = allDay ? 'Ganztägig' : fmtTime(ev.start.dateTime) + '–' + fmtTime(ev.end.dateTime);
   const nowCls   = eventIsNow(ev) ? 'now' : '';
-  const pastCls  = eventIsPast(ev) ? 'past' : '';
-  const color    = ev._calColor || (ev.colorId ? calColor(ev.colorId) : 'var(--p)');
+  const pastCls  = (eventIsPast(ev) || ev._done) ? 'past' : '';
+  const color    = ev._calColor || 'var(--p)';
   const loc      = ev.location ? `<div class="cal-loc">📍 ${ev.location.substring(0,50)}</div>` : '';
   const nowBadge = eventIsNow(ev) ? `<span style="font-size:10px;font-weight:700;color:var(--p);text-transform:uppercase;margin-left:6px">Jetzt</span>` : '';
+  const icon     = ev._isTask ? (ev._auto ? '🧩 ' : '📌 ') : '';
+  const doneStyle= ev._done ? 'text-decoration:line-through;opacity:.6' : '';
   return `<div class="cal-event ${nowCls} ${pastCls}">
     <div class="cal-event-bar" style="background:${color}"></div>
     <div style="flex:1;min-width:0">
       <div class="cal-time" style="min-width:0">${timeStr}${nowBadge}</div>
-      <div class="cal-title">${ev.summary || '(Kein Titel)'}</div>
+      <div class="cal-title" style="${doneStyle}">${icon}${ev.summary || '(Kein Titel)'}</div>
       ${loc}
     </div>
   </div>`;
@@ -1871,13 +1862,14 @@ function renderCalendar(events) {
       const dayLabel = `${DAYS[d.getDay()]}, ${d.getDate()}. ${MONTHS[d.getMonth()].substring(0,3)}.`;
       html += `<div class="day-header"><div class="day-label">${dayLabel}</div></div>`;
       dayEvs.slice(0, 3).forEach(ev => {
-        const color   = ev.colorId ? calColor(ev.colorId) : 'var(--p)';
+        const color   = ev._calColor || 'var(--p)';
         const timeStr = ev.start.dateTime ? fmtTime(ev.start.dateTime) : 'Ganztägig';
+        const icon    = ev._isTask ? (ev._auto ? '🧩 ' : '📌 ') : '';
         html += `<div class="cal-event">
           <div class="cal-event-bar" style="background:${color}"></div>
           <div style="flex:1;min-width:0">
             <div class="cal-time">${timeStr}</div>
-            <div class="cal-title">${ev.summary || '(Kein Titel)'}</div>
+            <div class="cal-title">${icon}${ev.summary || '(Kein Titel)'}</div>
           </div>
         </div>`;
       });
@@ -1897,12 +1889,12 @@ function renderCalendarNoAuth() {
   el.innerHTML = `
     <div style="padding:44px 24px;text-align:center">
       <div style="font-size:52px;margin-bottom:16px">📅</div>
-      <div style="font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:10px">Kalender verbinden</div>
-      <div style="font-size:14px;color:var(--t2);line-height:1.6;margin-bottom:28px;max-width:280px;margin-left:auto;margin-right:auto">
-        Verbinde deinen Google Calendar um Termine und freie Zeitfenster für deine Habits zu sehen.
+      <div style="font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:10px">FlowSavvy verbinden</div>
+      <div style="font-size:14px;color:var(--t2);line-height:1.6;margin-bottom:28px;max-width:290px;margin-left:auto;margin-right:auto">
+        Hinterlege deinen FlowSavvy API-Key in den Einstellungen, um deinen auto-geplanten Kalender zu sehen und Tasks & Termine anzulegen.
       </div>
-      <button class="btn btn-p" style="width:100%;max-width:280px" onclick="connectCalendar()">
-        📅 Kalender verbinden
+      <button class="btn btn-p" style="width:100%;max-width:280px" onclick="openM('settings')">
+        ⚙️ Zu den Einstellungen
       </button>
     </div>`;
 }
@@ -1917,55 +1909,52 @@ function renderCalendarError() {
       <div style="font-size:14px;color:var(--t2);line-height:1.6;margin-bottom:24px">
         Bitte überprüfe deine Internetverbindung und versuche es erneut.
       </div>
-      <button class="btn btn-g" onclick="loadCalendarEvents()">Erneut versuchen</button>
+      <button class="btn btn-g" onclick="loadSchedule()">Erneut versuchen</button>
     </div>`;
 }
 
 function renderCalendarApiError(msg, status) {
   const el = document.getElementById('cal-content');
   if (!el) return;
-  const isScopeError = msg && msg.toLowerCase().includes('insufficient authentication scopes');
-  const is403 = status === 403;
-  let hint = '';
-  if (isScopeError) {
-    hint = `<div style="font-size:13px;color:var(--t2);margin-top:12px;line-height:1.6">
-      Dein Kalender-Token hat nicht die nötigen Berechtigungen.<br>
-      Bitte einmal <strong style="color:var(--t1)">neu verbinden</strong> — das behebt das Problem sofort.
-    </div>`;
-  } else if (is403) {
-    hint = `<div style="font-size:12px;color:var(--t2);margin-top:12px;padding:10px;background:var(--s2);border-radius:var(--rs);text-align:left;line-height:1.6">
-      <strong>So beheben:</strong><br>
-      1. <a href="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com" target="_blank" style="color:var(--p)">Google Calendar API aktivieren</a> im Cloud Console<br>
-      2. Danach "Erneut verbinden" tippen
-    </div>`;
-  }
+  const fab = document.getElementById('cal-add-btn');
+  if (fab) fab.style.display = 'none';
   el.innerHTML = `
     <div style="padding:44px 24px;text-align:center">
       <div style="font-size:52px;margin-bottom:16px">🔒</div>
       <div style="font-size:20px;font-weight:800;margin-bottom:10px">Zugriff verweigert (${status})</div>
       <div style="font-size:13px;color:var(--err);line-height:1.5;margin-bottom:8px;word-break:break-word">${msg}</div>
-      ${hint}
+      <div style="font-size:13px;color:var(--t2);margin-top:12px;line-height:1.6;max-width:290px;margin-left:auto;margin-right:auto">
+        Die FlowSavvy-API erfordert ein aktives <strong style="color:var(--t1)">Pro</strong>-Abo und einen gültigen API-Key.
+      </div>
       <div style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-        <button class="btn btn-p btn-sm" onclick="connectCalendar()">Erneut verbinden</button>
-        <button class="btn btn-g btn-sm" onclick="loadCalendarEvents()">Neu laden</button>
+        <button class="btn btn-p btn-sm" onclick="openM('settings')">Einstellungen</button>
+        <button class="btn btn-g btn-sm" onclick="loadSchedule()">Neu laden</button>
       </div>
     </div>`;
 }
 
-// ── ADD CALENDAR EVENT ────────────────────────────────────────────────
+// ── ADD (FlowSavvy): Auswahl Task / Event ─────────────────────────────
 let calAlldayMode = false;
 
+// Der "+"-Button im Kalender öffnet zuerst die Auswahl
+function openCalAdd() {
+  if (!fsConnected()) { toast('Bitte zuerst FlowSavvy-Key in Einstellungen hinterlegen'); openM('settings'); return; }
+  document.getElementById('cal-add-choice').classList.add('open');
+}
+
+function chooseCalAdd(kind) {
+  closeM('cal-add-choice');
+  if (kind === 'event') openAddCalEvent();
+  else openFsTask();
+}
+
+// ── EVENT anlegen (POST /api/events) ──────────────────────────────────
 function openAddCalEvent() {
-  const token = localStorage.getItem('hf_cal_token');
-  if (!token && !localStorage.getItem('hf_cal_connected')) {
-    toast('Bitte zuerst Kalender verbinden');
-    return;
-  }
+  if (!fsConnected()) { toast('Bitte zuerst FlowSavvy-Key in Einstellungen hinterlegen'); openM('settings'); return; }
   calAlldayMode = false;
   const today = new Date();
-  const dateStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
   document.getElementById('ce-title').value = '';
-  document.getElementById('ce-date').value = dateStr;
+  document.getElementById('ce-date').value = fsDateStr(today);
   document.getElementById('ce-start').value = '09:00';
   document.getElementById('ce-end').value = '10:00';
   document.getElementById('ce-loc').value = '';
@@ -1998,83 +1987,112 @@ function toggleCalAllDay() {
 async function createCalendarEvent() {
   const title = document.getElementById('ce-title').value.trim();
   if (!title) { toast('Bitte Titel eingeben'); return; }
-
   const date = document.getElementById('ce-date').value;
   if (!date) { toast('Bitte Datum wählen'); return; }
-
-  let token = localStorage.getItem('hf_cal_token');
-  if (!token || isCalTokenExpired()) {
-    const ok = await tryRefreshCalToken();
-    if (!ok) { toast('Bitte Kalender neu verbinden'); connectCalendar(); return; }
-    token = localStorage.getItem('hf_cal_token');
-  }
 
   const btn = document.getElementById('ce-save-btn');
   btn.textContent = '...';
   btn.disabled = true;
 
-  let eventBody;
+  // FlowSavvy erwartet lokale ISO-Zeit ohne Offset (YYYY-MM-DDThh:mm:ss)
+  let body;
   if (calAlldayMode) {
-    const nextDay = new Date(date + 'T12:00:00');
-    nextDay.setDate(nextDay.getDate() + 1);
-    const endDate = nextDay.getFullYear() + '-' + String(nextDay.getMonth()+1).padStart(2,'0') + '-' + String(nextDay.getDate()).padStart(2,'0');
-    eventBody = {
-      summary: title,
-      start: { date },
-      end: { date: endDate }
+    body = {
+      itemType: 'event',
+      title,
+      allDay: true,
+      startDateTime: `${date}T00:00:00`,
+      endDateTime:   `${date}T23:59:00`
     };
   } else {
     const startVal = document.getElementById('ce-start').value || '09:00';
-    const endVal = document.getElementById('ce-end').value || '10:00';
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    eventBody = {
-      summary: title,
-      start: { dateTime: `${date}T${startVal}:00`, timeZone: tz },
-      end:   { dateTime: `${date}T${endVal}:00`,   timeZone: tz }
+    const endVal   = document.getElementById('ce-end').value || '10:00';
+    body = {
+      itemType: 'event',
+      title,
+      allDay: false,
+      startDateTime: `${date}T${startVal}:00`,
+      endDateTime:   `${date}T${endVal}:00`
     };
   }
-
-  const loc = document.getElementById('ce-loc').value.trim();
+  const loc  = document.getElementById('ce-loc').value.trim();
   const desc = document.getElementById('ce-desc').value.trim();
-  if (loc) eventBody.location = loc;
-  if (desc) eventBody.description = desc;
+  if (loc)  body.location = loc;
+  if (desc) body.notes = desc;
 
   try {
-    const r = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(eventBody)
-    });
-
-    if (r.status === 401) {
-      const ok = await tryRefreshCalToken();
-      if (ok) { btn.textContent = 'Speichern 📅'; btn.disabled = false; createCalendarEvent(); return; }
-      toast('Sitzung abgelaufen — bitte Kalender neu verbinden');
-      connectCalendar();
-      closeM('cal-event-m');
-      return;
-    }
-
-    if (r.status === 403) {
-      toast('Keine Schreibrechte — Kalender wird neu verbunden...');
-      closeM('cal-event-m');
-      connectCalendar();
-      return;
-    }
-
-    if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      toast('Fehler: ' + (err?.error?.message || r.status));
-      btn.textContent = 'Speichern 📅'; btn.disabled = false;
-      return;
-    }
-
+    await fsFetch('POST', '/api/events', body);
     toast('✅ Termin gespeichert!');
     closeM('cal-event-m');
-    loadCalendarEvents(false);
+    loadSchedule(false);
   } catch(e) {
-    toast('Netzwerkfehler: ' + e.message);
+    if (e.status === 401 || e.status === 403) toast('API-Key ungültig oder kein FlowSavvy Pro');
+    else toast('Fehler: ' + (e.data?.message || e.message));
     btn.textContent = 'Speichern 📅'; btn.disabled = false;
+  }
+}
+
+// ── TASK anlegen (POST /api/tasks) + optional Auto-Scheduling ──────────
+let fsTaskAuto = true;
+
+// prefill: optionales Objekt {title, notes, dueDate 'YYYY-MM-DD'}
+function openFsTask(prefill) {
+  if (!fsConnected()) { toast('Bitte zuerst FlowSavvy-Key in Einstellungen hinterlegen'); openM('settings'); return; }
+  prefill = prefill || {};
+  document.getElementById('fs-task-title').value = prefill.title || '';
+  document.getElementById('fs-task-notes').value = prefill.notes || '';
+  document.getElementById('fs-task-dur').value = prefill.durationMinutes || 30;
+  document.getElementById('fs-task-due').value = prefill.dueDate || '';
+  document.getElementById('fs-task-prio').value = 'normal';
+  fsTaskAuto = true;
+  syncFsTaskAutoUI();
+  const sb = document.getElementById('fs-task-save');
+  sb.textContent = 'Erstellen ✓'; sb.disabled = false;
+  document.getElementById('fs-task-m').classList.add('open');
+  setTimeout(() => document.getElementById('fs-task-title').focus(), 300);
+}
+
+function toggleFsTaskAuto() { fsTaskAuto = !fsTaskAuto; syncFsTaskAutoUI(); }
+
+function syncFsTaskAutoUI() {
+  const btn = document.getElementById('fs-task-auto-btn');
+  const knob = document.getElementById('fs-task-auto-knob');
+  btn.style.background = fsTaskAuto ? 'var(--ok)' : 'var(--border)';
+  knob.style.left = fsTaskAuto ? '21px' : '3px';
+}
+
+async function createFsTask() {
+  const title = document.getElementById('fs-task-title').value.trim();
+  if (!title) { toast('Bitte Titel eingeben'); return; }
+  const dur = parseInt(document.getElementById('fs-task-dur').value) || 30;
+  const due = document.getElementById('fs-task-due').value;
+  const prio = document.getElementById('fs-task-prio').value;
+  const notes = document.getElementById('fs-task-notes').value.trim();
+
+  const sb = document.getElementById('fs-task-save');
+  sb.textContent = '...'; sb.disabled = true;
+
+  const body = {
+    itemType: 'task',
+    title,
+    durationMinutes: dur,
+    priority: prio,
+    isAutoScheduled: fsTaskAuto
+  };
+  if (due) body.dueDateTime = `${due}T23:59:00`;
+  if (notes) body.notes = notes;
+
+  try {
+    await fsFetch('POST', '/api/tasks', body);
+    // Auto-geplante Tasks brauchen ein Recalculate, um im Plan zu erscheinen
+    if (fsTaskAuto) { try { await fsFetch('POST', '/api/recalculate', {}); } catch(_) {} }
+    toast('✅ Task erstellt' + (fsTaskAuto ? ' & eingeplant' : ''));
+    closeM('fs-task-m');
+    loadSchedule(false);
+  } catch(e) {
+    if (e.status === 401 || e.status === 403) toast('API-Key ungültig oder kein FlowSavvy Pro');
+    else toast('Fehler: ' + (e.data?.message || e.message));
+    sb.textContent = 'Erstellen ✓'; sb.disabled = false;
   }
 }
 
@@ -2346,6 +2364,10 @@ function openTTTaskDetail(taskId) {
     </div>`).join('');
   }
 
+  if (!done) {
+    html += `<button class="btn btn-g" style="width:100%;margin-top:4px" onclick="planTTInFlowSavvy('${t.id}')">📅 In FlowSavvy planen</button>`;
+  }
+
   document.getElementById('tt-detail-body').innerHTML = html;
   const doneBtn = document.getElementById('tt-detail-done-btn');
   if (done) {
@@ -2359,6 +2381,20 @@ function openTTTaskDetail(taskId) {
     };
   }
   openM('tt-detail-m');
+}
+
+// TickTick-Task nach FlowSavvy übernehmen (Einweg): öffnet das Task-Modal vorbefüllt
+function planTTInFlowSavvy(taskId) {
+  const t = ttTasks.find(x => x.id === taskId) || ttAllTasks.find(x => x.id === taskId);
+  if (!t) { toast('Task nicht gefunden'); return; }
+  if (!fsConnected()) { closeM('tt-detail-m'); toast('Bitte zuerst FlowSavvy-Key in Einstellungen hinterlegen'); openM('settings'); return; }
+  closeM('tt-detail-m');
+  openFsTask({
+    title: t.title || '',
+    notes: t.content || '',
+    dueDate: t.dueDate ? ttLocalDate(t.dueDate) : '',
+    durationMinutes: 30
+  });
 }
 
 function renderTTProjects() {
@@ -2403,7 +2439,7 @@ function renderDaySummary() {
   const el = document.getElementById('day-summary');
   if (!el) return;
   const ttConn = !!localStorage.getItem('hf_tt_token');
-  const calConn = !!localStorage.getItem('hf_cal_token');
+  const calConn = fsConnected();
   if (!ttConn && !calConn) { el.style.display = 'none'; return; }
   const vis = habits.filter(h => {
     if (h.timeOfDay === 'morning'   && HR >= 14) return false;
@@ -2419,7 +2455,7 @@ function renderDaySummary() {
   }).length;
   const parts = [];
   if (ttConn) parts.push(`<span class="sum-item">📋 ${ttTasks.filter(t => t.status !== 2).length} Tasks</span>`);
-  if (calConn) parts.push(`<span class="sum-item">📅 ${calTodayCount} Termine</span>`);
+  if (calConn) parts.push(`<span class="sum-item">📅 ${calTodayCount} geplant</span>`);
   parts.push(`<span class="sum-item">🔥 ${doneH}/${vis.length} Habits</span>`);
   el.style.display = 'flex';
   el.innerHTML = parts.join('<span class="sum-sep">·</span>');
@@ -3006,6 +3042,7 @@ function renderNotifSettings() {
 async function openM_settings() {
   const k = localStorage.getItem('hf_claude')||'';
   document.getElementById('claude-key').value=k;
+  document.getElementById('fs-key').value = localStorage.getItem('hf_fs_key')||'';
   document.getElementById('settings-m').classList.add('open');
   // Debug-Info
   const lh = loadLocal('habits')||[]; const lg = loadLocal('goals')||[];
@@ -3035,8 +3072,32 @@ function saveSettings() {
   const k = document.getElementById('claude-key').value.trim();
   if(k) localStorage.setItem('hf_claude',k);
   else  localStorage.removeItem('hf_claude');
+  const fsk = document.getElementById('fs-key').value.trim();
+  if(fsk) localStorage.setItem('hf_fs_key',fsk);
+  else    localStorage.removeItem('hf_fs_key');
   saveTTCreds();
   closeM('settings-m'); toast('Gespeichert ✓');
+}
+
+// FlowSavvy-Verbindung testen (speichert Key vorab, ruft /api/calendars)
+async function testFlowSavvy() {
+  const fsk = document.getElementById('fs-key').value.trim();
+  const st = document.getElementById('fs-status');
+  st.style.display = '';
+  if (!fsk) { st.style.color = 'var(--err)'; st.textContent = 'Bitte API-Key eingeben.'; return; }
+  localStorage.setItem('hf_fs_key', fsk);
+  st.style.color = 'var(--t2)'; st.textContent = 'Teste Verbindung…';
+  try {
+    const data = await fsFetch('GET', '/api/calendars');
+    const n = (data?.calendars || data || []).length;
+    st.style.color = 'var(--ok)';
+    st.textContent = `✅ Verbunden! ${n} Kalender gefunden.`;
+  } catch(e) {
+    st.style.color = 'var(--err)';
+    if (e.status === 401 || e.status === 403) st.textContent = '❌ Key ungültig oder kein FlowSavvy Pro.';
+    else if (e.message === 'functions-not-ready') st.textContent = '❌ Cloud Function nicht bereit — App neu laden.';
+    else st.textContent = '❌ Fehler: ' + (e.data?.message || e.message || 'unbekannt');
+  }
 }
 
 // ── NAVIGATION ─────────────────────────────────────────────────────
@@ -3051,13 +3112,7 @@ function nav(v) {
   setTimeout(()=>prev.classList.remove('prev'),320);
   curView=v;
   if(v==='s') renderStats();
-  if(v==='c') {
-    if(isCalTokenExpired() && localStorage.getItem('hf_cal_connected')) {
-      silentCalRefresh().then(ok => ok ? loadCalendarEvents(false) : loadCalendarEvents());
-    } else {
-      loadCalendarEvents();
-    }
-  }
+  if(v==='c') loadSchedule();
   if(v==='g') { if(localStorage.getItem('hf_tt_token')&&!ttProjectData.length) loadTTData(); else renderTTProjects(); }
 }
 

@@ -1,6 +1,7 @@
 'use strict';
 
 const { onSchedule }   = require('firebase-functions/v2/scheduler');
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore }  = require('firebase-admin/firestore');
 const { getMessaging }  = require('firebase-admin/messaging');
@@ -90,3 +91,51 @@ exports.sendHabitReminders = onSchedule(
     await Promise.all(sends);
   }
 );
+
+// ── FlowSavvy API Proxy ────────────────────────────────────────────────
+// Dünner Proxy: löst das fehlende CORS der FlowSavvy-API. Der API-Key kommt
+// pro Request aus dem Client (localStorage). Login (request.auth) ist Pflicht,
+// damit der Proxy kein offenes Relay ist.
+const FLOWSAVVY_BASE = 'https://my.flowsavvy.app';
+
+exports.flowsavvy = onCall({ region: 'us-central1' }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Login erforderlich.');
+  }
+
+  const { method = 'GET', path, body, apiKey } = request.data || {};
+
+  if (!apiKey || typeof apiKey !== 'string') {
+    throw new HttpsError('invalid-argument', 'apiKey fehlt.');
+  }
+  if (typeof path !== 'string' || !path.startsWith('/api/')) {
+    throw new HttpsError('invalid-argument', 'Ungültiger Pfad.');
+  }
+  const m = String(method).toUpperCase();
+  if (!['GET', 'POST', 'PUT', 'DELETE'].includes(m)) {
+    throw new HttpsError('invalid-argument', 'Ungültige Methode.');
+  }
+
+  let r;
+  try {
+    r = await fetch(FLOWSAVVY_BASE + path, {
+      method: m,
+      headers: {
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: (m === 'GET' || m === 'DELETE' || body == null) ? undefined : JSON.stringify(body)
+    });
+  } catch (e) {
+    throw new HttpsError('unavailable', 'FlowSavvy nicht erreichbar: ' + e.message);
+  }
+
+  const text = await r.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (_) { data = text; }
+  }
+
+  return { status: r.status, ok: r.ok, data };
+});
