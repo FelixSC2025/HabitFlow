@@ -432,6 +432,13 @@
         <p id="morning-prev">Was ist dein wichtigstes Ziel für heute?</p>
         <button class="ci-btn" onclick="openM('morning')">Intention setzen</button>
       </div>
+      <div id="briefing-card" class="ci-card" style="display:none;background:linear-gradient(135deg,rgba(14,60,74,.75),rgba(20,90,96,.5));border-color:rgba(45,160,170,.35)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <h3 style="margin:0;flex:1">🧭 Morgen-Briefing</h3>
+          <button id="briefing-refresh-btn" onclick="generateBriefing(true)" title="Neu generieren" style="background:none;border:none;color:#fff;opacity:.65;cursor:pointer;font-size:15px;padding:2px 4px">⟳</button>
+        </div>
+        <div id="briefing-content" style="font-size:14px;line-height:1.7"></div>
+      </div>
       <div id="evening-card" class="ci-card" style="display:none;background:linear-gradient(135deg,rgba(20,40,80,.8),rgba(40,20,100,.6))">
         <h3>🌙 Abend-Reflexion</h3>
         <p>Wie war dein Tag? Reflexion festigt Gewohnheiten.</p>
@@ -638,6 +645,16 @@
   </div>
 </div>
 
+<!-- Morgen-Briefing -->
+<div id="briefing-m" class="mwrap" onclick="mclick(event,'briefing-m')">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <h2>🧭 Dein Morgen-Briefing</h2>
+    <div id="briefing-m-content" style="font-size:14px;line-height:1.75;color:var(--t1)"><em style="color:var(--t3)">🧭 Dein Assistent bereitet den Tag vor…</em></div>
+    <button class="btn btn-p btn-w" style="margin-top:18px" onclick="closeM('briefing')">Los geht's →</button>
+  </div>
+</div>
+
 <!-- Top 3 Selection -->
 <div id="top3-m" class="mwrap" onclick="mclick(event,'top3-m')">
   <div class="modal">
@@ -818,6 +835,14 @@
       <div class="hint">Erfordert FlowSavvy <b>Pro</b>. Key erstellen unter <a href="https://my.flowsavvy.app/api/docs" target="_blank" style="color:var(--p)">my.flowsavvy.app/api/docs</a>. Nur lokal gespeichert.</div>
       <div id="fs-status" style="font-size:13px;margin:8px 0;display:none"></div>
       <button class="btn btn-g btn-sm" style="width:100%" onclick="testFlowSavvy()">Verbinden / Testen →</button>
+    </div>
+    <div class="fg">
+      <label class="lbl">Garmin Connect (Schlaf & Gesundheit fürs Briefing)</label>
+      <input id="garmin-email" class="inp" type="email" placeholder="Garmin E-Mail" autocomplete="off">
+      <input id="garmin-pass" class="inp" type="password" placeholder="Garmin Passwort" style="margin-top:8px" autocomplete="new-password">
+      <div class="hint">Optional. Nur lokal gespeichert, ausschließlich fürs Morgen-Briefing. Konten mit MFA/2FA werden evtl. nicht unterstützt.</div>
+      <div id="garmin-status" style="font-size:13px;margin:8px 0;display:none"></div>
+      <button class="btn btn-g btn-sm" style="width:100%" onclick="testGarmin()">Verbinden / Testen →</button>
     </div>
     <div style="display:flex;gap:10px;margin-bottom:16px">
       <button class="btn btn-p" style="flex:1" onclick="saveSettings()">Speichern</button>
@@ -1284,6 +1309,7 @@ async function loadToday() {
   todayLog = ld.exists ? ld.data() : {};
   top3TaskIds = todayLog.top3TaskIds || [];
   if (todayLog.morningIntention) document.getElementById('morning-prev').textContent = `"${todayLog.morningIntention}"`;
+  showBriefingCard();
 }
 
 async function checkMissBanner() {
@@ -2693,8 +2719,7 @@ function openTop3Modal(fromMorning) {
 
 function closeTop3Modal() {
   document.getElementById('top3-m').classList.remove('open');
-  if (top3FromMorning) toast('🌅 Schönen Tag!');
-  top3FromMorning = false;
+  if (top3FromMorning) { top3FromMorning = false; triggerMorningBriefing(); }
 }
 
 function renderTop3ModalList() {
@@ -2751,7 +2776,7 @@ async function saveTop3() {
   document.getElementById('top3-m').classList.remove('open');
   renderTop3Section();
   renderTTTasks();
-  if (top3FromMorning) { top3FromMorning = false; toast('🌅 Schönen Tag!'); }
+  if (top3FromMorning) { top3FromMorning = false; triggerMorningBriefing(); }
   else toast('★ Top 3 gespeichert!');
 }
 
@@ -2925,7 +2950,7 @@ async function saveMorning() {
   if (localStorage.getItem('hf_tt_token')) {
     openTop3Modal(true);
   } else {
-    toast('🌅 Schönen Tag!');
+    triggerMorningBriefing();
   }
 }
 
@@ -2935,6 +2960,284 @@ async function saveEvening() {
   const note = document.getElementById('evening-note').value.trim();
   await dref().doc(TD).set({eveningRating:selRating,eveningNote:note,date:TD},{merge:true});
   closeM('evening'); toast('🌙 Gute Nacht!');
+}
+
+// ── MORGEN-BRIEFING ──────────────────────────────────────────────────
+// Claude-generiertes "Chief of Staff"-Briefing aus Kalender (FlowSavvy),
+// Aufgaben (TickTick/Top 3), Gewohnheiten, Zielen, Stimmungstrend und
+// – falls verbunden – Garmin-Schlaf/-Gesundheitsdaten.
+
+const BRIEFING_PROMPT = `Du bist der persönliche Executive Assistant des Nutzers (Felix). Erstelle ein Morgen-Briefing, das sich wie die Zusammenfassung eines erfahrenen Chief of Staff anfühlt. Nutze ausschließlich die unten bereitgestellten Daten (Kalender, Aufgaben, Ziele, Gewohnheiten, Schlaf/Gesundheit, vergangene Tage). Erfinde keine Termine oder Fakten, die nicht in den Daten stehen.
+
+Priorisiere Wirkung statt Vollständigkeit. Hebe die 1–3 wichtigsten Aufgaben hervor, identifiziere Risiken, Chancen und Engpässe und gib konkrete Empfehlungen. Vermeide allgemeine Motivationssprüche. Sei präzise, vorausschauend und handlungsorientiert. Wenn Muster oder Probleme erkennbar sind (z. B. wiederholt verschobene/überfällige Aufgaben, sinkende Stimmung, schlechter Schlaf), sprich sie direkt an und schlage Lösungen vor.
+
+Antworte auf Deutsch. Gliedere in genau diese Abschnitte, jeweils als Überschrift mit "## ":
+## Begrüßung
+## Tageszusammenfassung
+## Wichtigste Priorität
+## Top-3-Aufgaben
+## Kalenderüberblick
+## Risiken
+## Chancen
+## Gesundheit & Energie
+## Fortschritt der Ziele
+## Handlungsempfehlung zum Abschluss
+
+Halte dich kurz: maximal 3–5 Minuten Lesezeit (ca. 350–500 Wörter gesamt). Fehlt eine Datenquelle, halte den entsprechenden Abschnitt knapp statt zu spekulieren.`;
+
+let briefingBusy = false;
+
+async function garminFetch(kind) {
+  const email = localStorage.getItem('hf_garmin_email');
+  const pass  = localStorage.getItem('hf_garmin_pass');
+  if (!email || !pass) throw new Error('no-garmin');
+  if (!fsFns) throw new Error('functions-not-ready');
+  const res = await fsFns.httpsCallable('garmin')({ email, pass, kind: kind || 'summary' });
+  const { ok, data, error } = res.data || {};
+  if (!ok) throw new Error(error || 'garmin-error');
+  return data;
+}
+
+// Garmin-Schlaf/-Gesundheit als Textblock — null, wenn nicht verbunden/fehlerhaft.
+async function gatherHealthData() {
+  if (!localStorage.getItem('hf_garmin_email') || !localStorage.getItem('hf_garmin_pass')) return null;
+  try {
+    const d = await garminFetch('summary');
+    if (!d) return null;
+    const lines = [];
+    if (d.sleep) {
+      const s = d.sleep;
+      const bits = [];
+      if (s.durationText) bits.push(`Dauer ${s.durationText}`);
+      if (s.score != null) bits.push(`Score ${s.score}`);
+      if (s.deepText) bits.push(`Tiefschlaf ${s.deepText}`);
+      if (s.remText)  bits.push(`REM ${s.remText}`);
+      if (bits.length) lines.push(`Schlaf letzte Nacht: ${bits.join(', ')}`);
+    }
+    if (d.bodyBattery != null) lines.push(`Body Battery: ${d.bodyBattery}`);
+    if (d.restingHR   != null) lines.push(`Ruhepuls: ${d.restingHR} bpm`);
+    if (d.hrv         != null) lines.push(`HRV: ${d.hrv} ms`);
+    if (d.stress      != null) lines.push(`Ø Stresslevel (gestern): ${d.stress}`);
+    if (d.steps       != null) lines.push(`Schritte gestern: ${d.steps}`);
+    return lines.length ? lines.join('\n') : null;
+  } catch(e) { return null; }
+}
+
+// FlowSavvy-Tagesplan (nur heute) als Textblock — null, wenn nicht verbunden.
+async function briefingSchedule() {
+  if (!fsConnected()) return null;
+  try {
+    const start = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+    const end   = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    const data  = await fsFetch('GET', `/api/schedule?startDate=${fsDateStr(start)}&endDate=${fsDateStr(end)}`);
+    const items = (data?.scheduleItems || []).filter(si => !si.completed);
+    items.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+    if (!items.length) return '(Keine Termine oder geplanten Blöcke für heute)';
+    return items.map(si => {
+      const t = si.allDay ? 'Ganztägig' : `${fmtTime(si.startTime)}–${fmtTime(si.endTime)}`;
+      const kind = si.itemType === 'task' ? '📌' : '📅';
+      return `${t} ${kind} ${si.title || '(ohne Titel)'}`;
+    }).join('\n');
+  } catch(e) { return null; }
+}
+
+// TickTick: Top 3 + überfällige & heute fällige Aufgaben.
+function briefingTasks() {
+  if (!localStorage.getItem('hf_tt_token')) return null;
+  const findTask = id => ttTasks.find(t => t.id === id) || ttAllTasks.find(t => t.id === id);
+  const lines = [];
+  const top3 = top3TaskIds.map(findTask).filter(Boolean);
+  if (top3.length) {
+    lines.push('Top 3 heute:\n' + top3.map(t => `★ ${t.title || '–'}${t.status === 2 ? ' (erledigt)' : ''}`).join('\n'));
+  }
+  const overdue = [], today = [];
+  (ttAllTasks || []).forEach(t => {
+    if (top3TaskIds.includes(t.id)) return;
+    const d = ttLocalDate(t.dueDate);
+    if (!d) return;
+    if (d < TDLocal) overdue.push(t);
+    else if (d === TDLocal) today.push(t);
+  });
+  if (overdue.length) lines.push(`Überfällig (${overdue.length}):\n` + overdue.slice(0, 8).map(t => `⚠️ ${t.title || '–'}${t._projectName ? ` [${t._projectName}]` : ''}`).join('\n'));
+  if (today.length)   lines.push(`Heute fällig (${today.length}):\n` + today.slice(0, 10).map(t => `• ${t.title || '–'}${t._projectName ? ` [${t._projectName}]` : ''}`).join('\n'));
+  return lines.length ? lines.join('\n\n') : '(Keine überfälligen oder heute fälligen Aufgaben)';
+}
+
+function briefingHabits() {
+  const due = habits.filter(isHabitDueToday);
+  if (!due.length) return '(Keine Gewohnheiten für heute)';
+  const done = due.filter(h => todayComp[h.id]).length;
+  const rows = due.map(h => `${todayComp[h.id] ? '✅' : '⬜'} ${h.icon || '•'} ${h.name}${h.streak ? ` (🔥${h.streak})` : ''}`).join('\n');
+  return `${done}/${due.length} erledigt\n${rows}`;
+}
+
+function briefingGoals() {
+  const open = goals.filter(g => !g.completed);
+  if (!open.length) return '(Keine aktiven Ziele)';
+  return open.map(g => {
+    const left = g.targetDate ? Math.ceil((new Date(g.targetDate + 'T12:00:00') - TODAY) / 86400000) : null;
+    const when = left === null ? '' : ` (${left > 0 ? left + ' Tage' : left === 0 ? 'heute fällig!' : 'überfällig'})`;
+    return `🎯 ${g.title}${g.metric ? ` — Messgröße: ${g.metric}` : ''}${when}`;
+  }).join('\n');
+}
+
+// Letzte 5 Tage: Stimmung, Intention, Reflexion (für Mustererkennung).
+async function briefingTrend() {
+  const days = [];
+  for (let i = 1; i <= 5; i++) { const d = new Date(TODAY); d.setDate(d.getDate() - i); days.push(d.toISOString().split('T')[0]); }
+  let logs = {};
+  try {
+    const s = await dref().where(firebase.firestore.FieldPath.documentId(), 'in', days).get();
+    s.docs.forEach(d => { logs[d.id] = d.data(); });
+  } catch(e) { return null; }
+  const EMO = ['', '😕', '😐', '🙂', '😊', '🤩'];
+  const WD = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+  const lines = days.slice().reverse().map(day => {
+    const l = logs[day]; if (!l) return null;
+    const p = [];
+    if (l.eveningRating) p.push(`Stimmung ${EMO[l.eveningRating]}`);
+    if (l.morningIntention) p.push(`Intention: "${l.morningIntention}"`);
+    if (l.eveningNote) p.push(`Reflexion: "${l.eveningNote}"`);
+    const dow = WD[new Date(day + 'T12:00:00').getDay()];
+    return p.length ? `${dow} ${day}: ${p.join(' | ')}` : null;
+  }).filter(Boolean);
+  return lines.length ? lines.join('\n') : null;
+}
+
+async function gatherBriefingContext() {
+  const [schedule, health, trend] = await Promise.all([briefingSchedule(), gatherHealthData(), briefingTrend()]);
+  const now = new Date();
+  const dateStr = `${DAYS[now.getDay()]}, ${now.getDate()}. ${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
+  const clock = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const s = [];
+  s.push(`Datum: ${dateStr}, aktuelle Uhrzeit: ${clock}`);
+  s.push(`Wichtigste Intention für heute: ${todayLog.morningIntention ? `"${todayLog.morningIntention}"` : '(noch nicht gesetzt)'}`);
+  s.push(`## Kalender & Tagesplan\n${schedule || '(FlowSavvy nicht verbunden)'}`);
+  s.push(`## Aufgaben\n${briefingTasks() || '(TickTick nicht verbunden)'}`);
+  s.push(`## Gewohnheiten heute\n${briefingHabits()}`);
+  s.push(`## Persönliche Ziele\n${briefingGoals()}`);
+  s.push(`## Gesundheit & Schlaf\n${health || '(Keine Garmin-Daten verfügbar)'}`);
+  if (trend) s.push(`## Letzte Tage (Stimmung, Intention, Reflexion)\n${trend}`);
+  return s.join('\n\n');
+}
+
+// Leichtes Markdown -> HTML (Überschriften, Fett, Listen).
+function renderBriefingMarkdown(text) {
+  return text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/^#{1,3}\s+(.*)$/gm, '<div style="font-weight:800;font-size:13px;margin:14px 0 4px;text-transform:uppercase;letter-spacing:.5px;color:var(--p)">$1</div>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^[-*]\s+(.*)$/gm, '<div style="padding-left:14px;text-indent:-10px">• $1</div>')
+    .replace(/\n{2,}/g, '<br><br>')
+    .replace(/\n/g, '<br>');
+}
+
+function showBriefingCard() {
+  const card = document.getElementById('briefing-card');
+  const content = document.getElementById('briefing-content');
+  if (!card || !content) return;
+  if (!localStorage.getItem('hf_claude')) { card.style.display = 'none'; return; }
+  const cached = todayLog.briefing || loadLocal('hf_briefing_' + TD);
+  if (cached) {
+    content.innerHTML = renderBriefingMarkdown(cached);
+    card.style.display = 'block';
+  } else if (HR < 18) {
+    content.innerHTML = `<p style="font-size:13px;opacity:.85;margin:0 0 12px;line-height:1.45">Persönliches Chief-of-Staff-Briefing aus Kalender, Aufgaben, Zielen & Gesundheit.</p><button class="ci-btn" onclick="generateBriefing(true)">Briefing erstellen</button>`;
+    card.style.display = 'block';
+  } else {
+    card.style.display = 'none';
+  }
+}
+
+async function generateBriefing(force) {
+  const key = localStorage.getItem('hf_claude');
+  if (!key) { toast('Bitte Claude API Key in den Einstellungen (⚙️) hinterlegen'); return; }
+  if (briefingBusy) return;
+
+  const cached = todayLog.briefing || loadLocal('hf_briefing_' + TD);
+  if (cached && !force) { showBriefingCard(); return; }
+
+  briefingBusy = true;
+  const card = document.getElementById('briefing-card');
+  const content = document.getElementById('briefing-content');
+  const modalC = document.getElementById('briefing-m-content');
+  if (card) card.style.display = 'block';
+  if (content) content.innerHTML = `<em style="opacity:.75">🧭 Briefing wird erstellt…</em>`;
+  if (modalC) modalC.innerHTML = `<em style="color:var(--t3)">🧭 Dein Assistent bereitet den Tag vor…</em>`;
+
+  try {
+    const context = await gatherBriefingContext();
+    const prompt = `${BRIEFING_PROMPT}\n\n---\nAktuelle Daten:\n\n${context}`;
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-8',
+        max_tokens: 1600,
+        thinking: { type: 'adaptive' },
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      const msg = `<em style="color:#e55">API-Fehler: ${data.error?.message || r.status}</em>`;
+      if (content) content.innerHTML = msg;
+      if (modalC) modalC.innerHTML = msg;
+      briefingBusy = false;
+      return;
+    }
+    const text = data.content?.find(b => b.type === 'text')?.text;
+    if (!text) {
+      const msg = `<em style="color:#e55">Unerwartete API-Antwort.</em>`;
+      if (content) content.innerHTML = msg;
+      if (modalC) modalC.innerHTML = msg;
+      briefingBusy = false;
+      return;
+    }
+    todayLog.briefing = text;
+    saveLocal('hf_briefing_' + TD, text);
+    try { await dref().doc(TD).set({ briefing: text, briefingAt: Date.now(), date: TD }, { merge: true }); } catch(_) {}
+    showBriefingCard();
+    if (modalC) modalC.innerHTML = renderBriefingMarkdown(text);
+  } catch(e) {
+    const msg = `<em style="color:#e55">Netzwerkfehler: ${e.message}</em>`;
+    if (content) content.innerHTML = msg;
+    if (modalC) modalC.innerHTML = msg;
+  }
+  briefingBusy = false;
+}
+
+// Nach dem Setzen der Morgen-Intention: Briefing erzeugen und Modal öffnen.
+async function triggerMorningBriefing() {
+  if (!localStorage.getItem('hf_claude')) { toast('🌅 Schönen Tag!'); showBriefingCard(); return; }
+  openM('briefing');
+  await generateBriefing(true);
+}
+
+async function testGarmin() {
+  const email = document.getElementById('garmin-email').value.trim();
+  const pass  = document.getElementById('garmin-pass').value;
+  const st = document.getElementById('garmin-status');
+  st.style.display = '';
+  if (!email || !pass) { st.style.color = 'var(--err)'; st.textContent = 'Bitte E-Mail und Passwort eingeben.'; return; }
+  localStorage.setItem('hf_garmin_email', email);
+  localStorage.setItem('hf_garmin_pass', pass);
+  st.style.color = 'var(--t2)'; st.textContent = 'Teste Verbindung…';
+  try {
+    const d = await garminFetch('summary');
+    st.style.color = 'var(--ok)';
+    st.textContent = d?.sleep?.durationText ? `✅ Verbunden! Schlaf letzte Nacht: ${d.sleep.durationText}` : '✅ Verbunden!';
+  } catch(e) {
+    st.style.color = 'var(--err)';
+    if (e.message === 'functions-not-ready') st.textContent = '❌ Cloud Function nicht bereit — App neu laden.';
+    else if (e.message === 'no-garmin') st.textContent = '❌ Zugangsdaten fehlen.';
+    else st.textContent = '❌ Verbindung fehlgeschlagen (MFA/2FA-Konten werden evtl. nicht unterstützt).';
+  }
 }
 
 // ── DETAIL MODAL ────────────────────────────────────────────────────
@@ -3184,6 +3487,8 @@ async function openM_settings() {
   const k = localStorage.getItem('hf_claude')||'';
   document.getElementById('claude-key').value=k;
   document.getElementById('fs-key').value = localStorage.getItem('hf_fs_key')||'';
+  document.getElementById('garmin-email').value = localStorage.getItem('hf_garmin_email')||'';
+  document.getElementById('garmin-pass').value  = localStorage.getItem('hf_garmin_pass')||'';
   document.getElementById('settings-m').classList.add('open');
   // Debug-Info
   const lh = loadLocal('habits')||[]; const lg = loadLocal('goals')||[];
@@ -3216,6 +3521,10 @@ function saveSettings() {
   const fsk = document.getElementById('fs-key').value.trim();
   if(fsk) localStorage.setItem('hf_fs_key',fsk);
   else    localStorage.removeItem('hf_fs_key');
+  const gme = document.getElementById('garmin-email').value.trim();
+  const gpw = document.getElementById('garmin-pass').value;
+  if(gme) localStorage.setItem('hf_garmin_email',gme); else localStorage.removeItem('hf_garmin_email');
+  if(gpw) localStorage.setItem('hf_garmin_pass',gpw);  else localStorage.removeItem('hf_garmin_pass');
   saveTTCreds();
   closeM('settings-m'); toast('Gespeichert ✓');
 }
@@ -3258,7 +3567,7 @@ function nav(v) {
 }
 
 // ── MODAL HELPERS ───────────────────────────────────────────────────
-const MODAL_IDS = {habit:'habit-m',morning:'morning-m',evening:'evening-m',detail:'detail-m',goal:'goal-m',settings:'settings-m','tt-detail':'tt-detail-m',trigger:'trigger-m',top3:'top3-m'};
+const MODAL_IDS = {habit:'habit-m',morning:'morning-m',evening:'evening-m',detail:'detail-m',goal:'goal-m',settings:'settings-m','tt-detail':'tt-detail-m',trigger:'trigger-m',top3:'top3-m',briefing:'briefing-m'};
 function openM(k) {
   if(k==='settings') openM_settings();
   else {

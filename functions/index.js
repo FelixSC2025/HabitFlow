@@ -139,3 +139,115 @@ exports.flowsavvy = onCall({ region: 'us-central1' }, async (request) => {
 
   return { status: r.status, ok: r.ok, data };
 });
+
+// ── Garmin Connect Proxy ───────────────────────────────────────────────
+// Holt Schlaf-/Gesundheitsdaten fürs Morgen-Briefing. Die Zugangsdaten
+// kommen pro Request aus dem Client (localStorage); der OAuth-Token wird
+// pro Nutzer in Firestore gecacht, damit nicht jeder Aufruf neu einloggt.
+// Hinweis: garmin-connect ist eine inoffizielle Bibliothek — Konten mit
+// aktivierter MFA/2FA funktionieren i.d.R. nicht.
+const { GarminConnect } = require('garmin-connect');
+
+const ymd = d => d.toISOString().split('T')[0];
+const fmtDur = sec => {
+  if (sec == null || isNaN(sec)) return null;
+  const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+  return `${h}h ${m}m`;
+};
+
+exports.garmin = onCall({ region: 'us-central1', timeoutSeconds: 60, memory: '512MiB' }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Login erforderlich.');
+  }
+  const { email, pass } = request.data || {};
+  if (!email || !pass) {
+    throw new HttpsError('invalid-argument', 'Garmin-Zugangsdaten fehlen.');
+  }
+
+  const uid = request.auth.uid;
+  const tokenRef = db.collection('users').doc(uid).collection('private').doc('garmin');
+  const client = new GarminConnect({ username: email, password: pass });
+
+  // 1) Gecachten Token laden, sonst frisch einloggen.
+  let authed = false;
+  try {
+    const snap = await tokenRef.get();
+    const tok = snap.exists ? snap.data().token : null;
+    if (tok && tok.oauth1 && tok.oauth2 && typeof client.loadToken === 'function') {
+      client.loadToken(tok.oauth1, tok.oauth2);
+      authed = true;
+    }
+  } catch (_) {}
+
+  async function login() {
+    await client.login();
+    authed = true;
+    try {
+      if (typeof client.exportToken === 'function') {
+        await tokenRef.set({ token: client.exportToken(), at: Date.now() }, { merge: true });
+      }
+    } catch (_) {}
+  }
+
+  if (!authed) {
+    try { await login(); }
+    catch (e) { return { ok: false, error: 'login-failed', message: e.message }; }
+  }
+
+  // Ruft fn() auf; bei Fehler (evtl. abgelaufener Token) einmal neu einloggen.
+  async function tryFetch(fn) {
+    try { return await fn(); }
+    catch (e1) {
+      try { await login(); return await fn(); }
+      catch (e2) { return null; }
+    }
+  }
+
+  const today = new Date();
+  const yest = new Date(today.getTime() - 86400000);
+  const result = {};
+
+  // Schlaf letzte Nacht
+  const sleepRaw = await tryFetch(() =>
+    typeof client.getSleepData === 'function' ? client.getSleepData(ymd(today)) : null);
+  if (sleepRaw) {
+    const dto = sleepRaw.dailySleepDTO || sleepRaw;
+    result.sleep = {
+      durationText: fmtDur(dto.sleepTimeSeconds),
+      score: dto.sleepScores?.overall?.value ?? dto.overallSleepScore ?? null,
+      deepText: fmtDur(dto.deepSleepSeconds),
+      remText: fmtDur(dto.remSleepSeconds)
+    };
+  }
+
+  // Schritte gestern
+  const stepsRaw = await tryFetch(() =>
+    typeof client.getSteps === 'function' ? client.getSteps(ymd(yest)) : null);
+  if (typeof stepsRaw === 'number') result.steps = stepsRaw;
+  else if (stepsRaw && typeof stepsRaw.totalSteps === 'number') result.steps = stepsRaw.totalSteps;
+
+  // Ruhepuls gestern
+  const hrRaw = await tryFetch(() =>
+    typeof client.getHeartRate === 'function' ? client.getHeartRate(ymd(yest)) : null);
+  if (hrRaw && hrRaw.restingHeartRate != null) result.restingHR = hrRaw.restingHeartRate;
+
+  // Body Battery / Stress / HRV — best effort über die Low-Level-API.
+  if (typeof client.get === 'function') {
+    const bb = await tryFetch(() =>
+      client.get(`/wellness-service/wellness/bodyBattery/reports/daily?startDate=${ymd(yest)}&endDate=${ymd(yest)}`));
+    try {
+      const vals = bb?.[0]?.bodyBatteryValuesArray;
+      if (Array.isArray(vals) && vals.length) result.bodyBattery = vals[vals.length - 1][1];
+    } catch (_) {}
+
+    const stress = await tryFetch(() =>
+      client.get(`/wellness-service/wellness/dailyStress/${ymd(yest)}`));
+    if (stress && stress.avgStressLevel != null) result.stress = stress.avgStressLevel;
+
+    const hrv = await tryFetch(() =>
+      client.get(`/hrv-service/hrv/${ymd(today)}`));
+    if (hrv && hrv.hrvSummary?.lastNightAvg != null) result.hrv = hrv.hrvSummary.lastNightAvg;
+  }
+
+  return { ok: true, data: result };
+});
