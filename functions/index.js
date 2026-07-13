@@ -141,11 +141,14 @@ exports.flowsavvy = onCall({ region: 'us-central1' }, async (request) => {
 });
 
 // ── Garmin Connect Proxy ───────────────────────────────────────────────
-// Holt Schlaf-/Gesundheitsdaten fürs Morgen-Briefing. Die Zugangsdaten
-// kommen pro Request aus dem Client (localStorage); der OAuth-Token wird
-// pro Nutzer in Firestore gecacht, damit nicht jeder Aufruf neu einloggt.
-// Hinweis: garmin-connect ist eine inoffizielle Bibliothek — Konten mit
-// aktivierter MFA/2FA funktionieren i.d.R. nicht.
+// Holt Schlaf-/Gesundheitsdaten fürs Morgen-Briefing.
+//
+// WICHTIG: Garmin rate-limitet (429) den vollen SSO-Passwort-Login von den
+// geteilten Google-Cloud-IPs aus. Deshalb wird der Token EINMALIG LOKAL
+// erzeugt (siehe scripts/garmin-token.js) und vom Client mitgeschickt. Der
+// langlebige oauth1-Token wird pro Nutzer in Firestore gecacht; die Library
+// erneuert den kurzlebigen oauth2-Token selbst über oauth1 (ohne SSO-Login).
+// Passwort-Login bleibt nur als Fallback (klappt auf Cloud-IPs meist nicht).
 const { GarminConnect } = require('garmin-connect');
 
 const ymd = d => d.toISOString().split('T')[0];
@@ -154,53 +157,62 @@ const fmtDur = sec => {
   const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
   return `${h}h ${m}m`;
 };
+const decodeToken = b64 => {
+  try { return JSON.parse(Buffer.from(String(b64), 'base64').toString('utf8')); }
+  catch (_) { return null; }
+};
 
 exports.garmin = onCall({ region: 'us-central1', timeoutSeconds: 60, memory: '512MiB' }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Login erforderlich.');
   }
-  const { email, pass } = request.data || {};
-  if (!email || !pass) {
-    throw new HttpsError('invalid-argument', 'Garmin-Zugangsdaten fehlen.');
-  }
+  const { email, pass, token: tokenB64 } = request.data || {};
 
   const uid = request.auth.uid;
   const tokenRef = db.collection('users').doc(uid).collection('private').doc('garmin');
-  const client = new GarminConnect({ username: email, password: pass });
+  const client = new GarminConnect({ username: email || 'placeholder@example.com', password: pass || 'placeholder' });
 
-  // 1) Gecachten Token laden, sonst frisch einloggen.
   let authed = false;
+
+  // 1) Gecachten Token aus Firestore (bevorzugt — oauth2 wird per oauth1 auto-refreshed).
   try {
     const snap = await tokenRef.get();
     const tok = snap.exists ? snap.data().token : null;
-    if (tok && tok.oauth1 && tok.oauth2 && typeof client.loadToken === 'function') {
-      client.loadToken(tok.oauth1, tok.oauth2);
-      authed = true;
-    }
+    if (tok && tok.oauth1 && tok.oauth2) { client.loadToken(tok.oauth1, tok.oauth2); authed = true; }
   } catch (_) {}
 
-  async function login() {
-    await client.login();
-    authed = true;
-    try {
-      if (typeof client.exportToken === 'function') {
-        await tokenRef.set({ token: client.exportToken(), at: Date.now() }, { merge: true });
-      }
-    } catch (_) {}
+  // 2) Vom Client mitgeschickter Token (lokal via scripts/garmin-token.js erzeugt).
+  if (!authed && tokenB64) {
+    const tok = decodeToken(tokenB64);
+    if (tok && tok.oauth1 && tok.oauth2) {
+      client.loadToken(tok.oauth1, tok.oauth2);
+      authed = true;
+      try { await tokenRef.set({ token: tok, at: Date.now() }, { merge: true }); } catch (_) {}
+    } else {
+      return { ok: false, error: 'bad-token', message: 'Token-String ungültig — bitte lokal neu erzeugen.' };
+    }
   }
 
+  // 3) Fallback: voller Passwort-Login (auf Cloud-IPs meist 429 "Rate limited").
   if (!authed) {
-    try { await login(); }
-    catch (e) { return { ok: false, error: 'login-failed', message: e.message }; }
+    if (!email || !pass) {
+      return { ok: false, error: 'no-auth', message: 'Kein Token und keine Zugangsdaten übergeben.' };
+    }
+    try {
+      await client.login();
+      authed = true;
+      try { await tokenRef.set({ token: client.exportToken(), at: Date.now() }, { merge: true }); } catch (_) {}
+    } catch (e) {
+      return { ok: false, error: 'login-failed', message: e.message };
+    }
   }
 
-  // Ruft fn() auf; bei Fehler (evtl. abgelaufener Token) einmal neu einloggen.
+  // Datenabruf. Kein erneuter Passwort-Login bei Fehlern — die Library
+  // refreshed oauth2 selbst; scheitert das, ist der oauth1-Token abgelaufen.
+  let fetchErr = null;
   async function tryFetch(fn) {
     try { return await fn(); }
-    catch (e1) {
-      try { await login(); return await fn(); }
-      catch (e2) { return null; }
-    }
+    catch (e) { if (!fetchErr) fetchErr = e.message; return null; }
   }
 
   const today = new Date();
@@ -247,6 +259,14 @@ exports.garmin = onCall({ region: 'us-central1', timeoutSeconds: 60, memory: '51
     const hrv = await tryFetch(() =>
       client.get(`/hrv-service/hrv/${ymd(today)}`));
     if (hrv && hrv.hrvSummary?.lastNightAvg != null) result.hrv = hrv.hrvSummary.lastNightAvg;
+  }
+
+  // Refreshten oauth2-Token zurück in den Cache schreiben.
+  try { await tokenRef.set({ token: client.exportToken(), at: Date.now() }, { merge: true }); } catch (_) {}
+
+  // Kam gar nichts durch, ist der oauth1-Token vermutlich abgelaufen/ungültig.
+  if (!Object.keys(result).length) {
+    return { ok: false, error: 'fetch-failed', message: fetchErr || 'Keine Daten erhalten — Token evtl. abgelaufen.' };
   }
 
   return { ok: true, data: result };

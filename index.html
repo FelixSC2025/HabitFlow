@@ -840,7 +840,8 @@
       <label class="lbl">Garmin Connect (Schlaf & Gesundheit fürs Briefing)</label>
       <input id="garmin-email" class="inp" type="email" placeholder="Garmin E-Mail" autocomplete="off">
       <input id="garmin-pass" class="inp" type="password" placeholder="Garmin Passwort" style="margin-top:8px" autocomplete="new-password">
-      <div class="hint">Optional. Nur lokal gespeichert, ausschließlich fürs Morgen-Briefing. Konten mit MFA/2FA werden evtl. nicht unterstützt.</div>
+      <textarea id="garmin-token" class="inp" placeholder="Garmin-Token (empfohlen — siehe Hinweis)" style="margin-top:8px;min-height:56px;font-family:monospace;font-size:11px" autocomplete="off"></textarea>
+      <div class="hint">Optional, nur fürs Morgen-Briefing. Der direkte Passwort-Login schlägt vom Server aus meist fehl (Garmin blockt die Cloud-IP). <b>Empfohlen:</b> Token einmal lokal erzeugen — im Ordner <code>functions</code>: <code>node scripts/garmin-token.js "email" "passwort"</code> — und den ausgegebenen String oben einfügen. Hält ~1 Jahr. MFA/2FA-Konten werden nicht unterstützt.</div>
       <div id="garmin-status" style="font-size:13px;margin:8px 0;display:none"></div>
       <button class="btn btn-g btn-sm" style="width:100%" onclick="testGarmin()">Verbinden / Testen →</button>
     </div>
@@ -2987,20 +2988,26 @@ Halte dich kurz: maximal 3–5 Minuten Lesezeit (ca. 350–500 Wörter gesamt). 
 
 let briefingBusy = false;
 
+function garminConfigured() {
+  return !!localStorage.getItem('hf_garmin_token') ||
+    (!!localStorage.getItem('hf_garmin_email') && !!localStorage.getItem('hf_garmin_pass'));
+}
+
 async function garminFetch(kind) {
   const email = localStorage.getItem('hf_garmin_email');
   const pass  = localStorage.getItem('hf_garmin_pass');
-  if (!email || !pass) throw new Error('no-garmin');
+  const token = localStorage.getItem('hf_garmin_token');
+  if (!garminConfigured()) throw new Error('no-garmin');
   if (!fsFns) throw new Error('functions-not-ready');
-  const res = await fsFns.httpsCallable('garmin')({ email, pass, kind: kind || 'summary' });
-  const { ok, data, error } = res.data || {};
-  if (!ok) throw new Error(error || 'garmin-error');
+  const res = await fsFns.httpsCallable('garmin')({ email, pass, token: token || null, kind: kind || 'summary' });
+  const { ok, data, error, message } = res.data || {};
+  if (!ok) { const e = new Error(message || error || 'garmin-error'); e.code = error; throw e; }
   return data;
 }
 
 // Garmin-Schlaf/-Gesundheit als Textblock — null, wenn nicht verbunden/fehlerhaft.
 async function gatherHealthData() {
-  if (!localStorage.getItem('hf_garmin_email') || !localStorage.getItem('hf_garmin_pass')) return null;
+  if (!garminConfigured()) return null;
   try {
     const d = await garminFetch('summary');
     if (!d) return null;
@@ -3222,21 +3229,30 @@ async function triggerMorningBriefing() {
 async function testGarmin() {
   const email = document.getElementById('garmin-email').value.trim();
   const pass  = document.getElementById('garmin-pass').value;
+  const token = document.getElementById('garmin-token').value.trim();
   const st = document.getElementById('garmin-status');
   st.style.display = '';
-  if (!email || !pass) { st.style.color = 'var(--err)'; st.textContent = 'Bitte E-Mail und Passwort eingeben.'; return; }
-  localStorage.setItem('hf_garmin_email', email);
-  localStorage.setItem('hf_garmin_pass', pass);
+  if (!token && (!email || !pass)) {
+    st.style.color = 'var(--err)';
+    st.textContent = 'Bitte einen lokal erzeugten Token einfügen (empfohlen) oder E-Mail + Passwort eingeben.';
+    return;
+  }
+  if (email) localStorage.setItem('hf_garmin_email', email); else localStorage.removeItem('hf_garmin_email');
+  if (pass)  localStorage.setItem('hf_garmin_pass', pass);   else localStorage.removeItem('hf_garmin_pass');
+  if (token) localStorage.setItem('hf_garmin_token', token); else localStorage.removeItem('hf_garmin_token');
   st.style.color = 'var(--t2)'; st.textContent = 'Teste Verbindung…';
   try {
     const d = await garminFetch('summary');
     st.style.color = 'var(--ok)';
-    st.textContent = d?.sleep?.durationText ? `✅ Verbunden! Schlaf letzte Nacht: ${d.sleep.durationText}` : '✅ Verbunden!';
+    st.textContent = d?.sleep?.durationText ? `✅ Verbunden! Schlaf letzte Nacht: ${d.sleep.durationText}` : '✅ Verbunden! (noch keine Schlafdaten für heute)';
   } catch(e) {
     st.style.color = 'var(--err)';
     if (e.message === 'functions-not-ready') st.textContent = '❌ Cloud Function nicht bereit — App neu laden.';
-    else if (e.message === 'no-garmin') st.textContent = '❌ Zugangsdaten fehlen.';
-    else st.textContent = '❌ Verbindung fehlgeschlagen (MFA/2FA-Konten werden evtl. nicht unterstützt).';
+    else if (e.message === 'no-garmin') st.textContent = '❌ Zugangsdaten/Token fehlen.';
+    else if (e.code === 'login-failed') st.textContent = '❌ Passwort-Login vom Server blockiert (Garmin Rate-Limit). Bitte Token lokal erzeugen — siehe Hinweis.';
+    else if (e.code === 'bad-token') st.textContent = '❌ Token ungültig — bitte lokal neu erzeugen.';
+    else if (e.code === 'fetch-failed') st.textContent = '❌ Token abgelaufen/ungültig — bitte lokal neu erzeugen.';
+    else st.textContent = '❌ ' + (e.message || 'Verbindung fehlgeschlagen.');
   }
 }
 
@@ -3489,6 +3505,7 @@ async function openM_settings() {
   document.getElementById('fs-key').value = localStorage.getItem('hf_fs_key')||'';
   document.getElementById('garmin-email').value = localStorage.getItem('hf_garmin_email')||'';
   document.getElementById('garmin-pass').value  = localStorage.getItem('hf_garmin_pass')||'';
+  document.getElementById('garmin-token').value = localStorage.getItem('hf_garmin_token')||'';
   document.getElementById('settings-m').classList.add('open');
   // Debug-Info
   const lh = loadLocal('habits')||[]; const lg = loadLocal('goals')||[];
@@ -3523,8 +3540,10 @@ function saveSettings() {
   else    localStorage.removeItem('hf_fs_key');
   const gme = document.getElementById('garmin-email').value.trim();
   const gpw = document.getElementById('garmin-pass').value;
+  const gtk = document.getElementById('garmin-token').value.trim();
   if(gme) localStorage.setItem('hf_garmin_email',gme); else localStorage.removeItem('hf_garmin_email');
   if(gpw) localStorage.setItem('hf_garmin_pass',gpw);  else localStorage.removeItem('hf_garmin_pass');
+  if(gtk) localStorage.setItem('hf_garmin_token',gtk); else localStorage.removeItem('hf_garmin_token');
   saveTTCreds();
   closeM('settings-m'); toast('Gespeichert ✓');
 }
