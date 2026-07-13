@@ -1657,17 +1657,68 @@ function fsDateStr(d) {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 
+// Kalenderfarben & Event->Kalender-Zuordnung (ScheduleItem trägt keine Kalender-Info)
+let fsCalMeta = {};       // calId -> { color, title, source }
+let fsEventCal = {};      // event itemId -> calId
+let fsCalsInView = [];    // calIds die aktuell im Plan vorkommen (für Legende)
+const FS_PALETTE = ['#4f8cff','#33b679','#f6bf26','#e67c73','#8e24aa','#039be5','#f4511e','#00897b','#c0ca33','#616161'];
+
+// Lädt Kalenderfarben + Zuordnung Event->Kalender
+async function fsLoadCalendarMaps() {
+  fsCalMeta = {}; fsEventCal = {};
+  // 1) Kalender + Farben (fehlende Farbe -> Palette nach Reihenfolge)
+  try {
+    const c = await fsFetch('GET', '/api/calendars');
+    (c?.calendars || []).forEach((cal, i) => {
+      if (!cal.id) return;
+      fsCalMeta[cal.id] = {
+        color: cal.color || FS_PALETTE[i % FS_PALETTE.length],
+        title: cal.title || 'Kalender',
+        source: cal.source || ''
+      };
+    });
+  } catch(_) {}
+  // 2) Events -> calendarId (paginiert)
+  try {
+    let token = null, pages = 0;
+    do {
+      const q = `/api/items?itemType=event&limit=200${token ? `&pageToken=${encodeURIComponent(token)}` : ''}`;
+      const r = await fsFetch('GET', q);
+      (r?.items || []).forEach(it => { if (it.id && it.calendarId) fsEventCal[it.id] = it.calendarId; });
+      token = r?.nextPageToken || null;
+      pages++;
+    } while (token && pages < 6);
+  } catch(_) {}
+}
+
 // FlowSavvy ScheduleItem -> internes Event-Format (kompatibel mit renderCalendar/renderCalEvent)
 function fsScheduleToEvent(si) {
   const isTask = si.itemType === 'task';
-  const color = isTask
-    ? (si.isAutoScheduled ? '#7c6cff' : '#5b8def')
-    : 'var(--p)';
-  const base = { summary: si.title || '(Kein Titel)', _calColor: color, _isTask: isTask, _auto: !!si.isAutoScheduled, _done: !!si.completed };
+  let color, calId = null;
+  if (isTask) {
+    color = si.isAutoScheduled ? '#7c6cff' : '#5b8def';
+  } else {
+    calId = fsEventCal[si.itemId] || null;
+    const meta = calId ? fsCalMeta[calId] : null;
+    color = (meta && meta.color) ? meta.color : 'var(--p)';
+    if (calId && !fsCalsInView.includes(calId)) fsCalsInView.push(calId);
+  }
+  const base = { summary: si.title || '(Kein Titel)', _calColor: color, _calId: calId, _isTask: isTask, _auto: !!si.isAutoScheduled, _done: !!si.completed };
   if (si.allDay) {
     return { ...base, start: { date: (si.startTime || '').slice(0,10) }, end: { date: (si.endTime || si.startTime || '').slice(0,10) } };
   }
   return { ...base, start: { dateTime: si.startTime }, end: { dateTime: si.endTime } };
+}
+
+// Legende: farbige Chips der Kalender, die aktuell im Plan vorkommen
+function fsCalLegendHtml() {
+  if (!fsCalsInView.length) return '';
+  const chips = fsCalsInView.map(id => {
+    const m = fsCalMeta[id] || {};
+    const col = m.color || 'var(--p)';
+    return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--t2)"><span style="width:9px;height:9px;border-radius:2px;background:${col};display:inline-block;flex-shrink:0"></span>${m.title || 'Kalender'}</span>`;
+  }).join('');
+  return `<div style="display:flex;flex-wrap:wrap;gap:8px 14px;padding:2px 20px 12px">${chips}</div>`;
 }
 
 async function loadSchedule(showSpinner = true) {
@@ -1678,7 +1729,9 @@ async function loadSchedule(showSpinner = true) {
     const start = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
     const end   = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
     const path  = `/api/schedule?startDate=${fsDateStr(start)}&endDate=${fsDateStr(end)}`;
-    const data  = await fsFetch('GET', path);
+    fsCalsInView = [];
+    // Kalenderfarben/-zuordnung parallel zum Plan laden
+    const [, data] = await Promise.all([ fsLoadCalendarMaps(), fsFetch('GET', path) ]);
     const items = (data?.scheduleItems || []).map(fsScheduleToEvent);
     items.sort((a, b) => (a.start.dateTime || a.start.date || '').localeCompare(b.start.dateTime || b.start.date || ''));
     renderCalendar(items);
@@ -1816,7 +1869,7 @@ function renderCalendar(events) {
   const todayEvs = events.filter(ev => (ev.start.dateTime || ev.start.date || '').startsWith(TD));
   calTodayCount = todayEvs.length;
   renderDaySummary();
-  let html = `<div class="sec">HEUTE</div>`;
+  let html = fsCalLegendHtml() + `<div class="sec">HEUTE</div>`;
 
   if (!todayEvs.length) {
     html += `<div class="empty" style="padding:28px 24px"><div class="ei">🎯</div><div class="et">Freier Tag!</div><div class="ed">Perfekt für deine Gewohnheiten.</div></div>`;
