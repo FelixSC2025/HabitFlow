@@ -267,6 +267,8 @@ exports.garmin = onCall({ region: 'us-central1', timeoutSeconds: 60, memory: '51
     if (hrv && hrv.hrvSummary?.lastNightAvg != null) result.hrv = hrv.hrvSummary.lastNightAvg;
   }
 
+  console.log('garmin result keys:', Object.keys(result).join(',') || '(none)', '| firstErr:', fetchErr || 'none');
+
   // Refreshten oauth2-Token zurück in den Cache schreiben.
   try { await tokenRef.set({ token: client.exportToken(), at: Date.now() }, { merge: true }); } catch (_) {}
 
