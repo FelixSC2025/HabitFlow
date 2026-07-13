@@ -233,6 +233,19 @@
   .cal-loc{font-size:12px;color:var(--t2);margin-top:2px}
   .cal-event.past{opacity:.45}
   .cal-event.now{border-color:var(--p);background:rgba(124,111,247,.06)}
+  .cal-event.task{cursor:default}
+  .cal-cb{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s;cursor:pointer;margin-top:1px;-webkit-tap-highlight-color:transparent}
+  .cal-cb:active{transform:scale(.88)}
+  .cal-cb.done{background:var(--ok);border-color:var(--ok);cursor:default}
+  .cal-cb.done::after{content:'';width:8px;height:5px;border-left:2px solid #000;border-bottom:2px solid #000;transform:rotate(-45deg) translateY(-1px)}
+  .cal-cb.pending{opacity:.5;pointer-events:none;animation:calSpin .8s linear infinite}
+  .cal-today-head{padding:14px 20px 2px}
+  .cal-today-date{font-size:21px;font-weight:800;letter-spacing:-.4px;text-transform:capitalize}
+  .cal-today-sub{font-size:13px;color:var(--t2);margin-top:3px}
+  .cal-now-line{display:flex;align-items:center;gap:8px;margin:2px 16px 8px;padding:0 4px}
+  .cal-now-line::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--p);flex-shrink:0}
+  .cal-now-line::after{content:'';flex:1;height:2px;border-radius:2px;background:var(--p);opacity:.5}
+  .cal-now-line span{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--p)}
   .time-window{margin:0 16px 8px;padding:14px 16px;background:rgba(45,212,160,.07);border:1px solid rgba(45,212,160,.2);border-radius:var(--r)}
   .time-window-badge{font-size:11px;font-weight:700;color:var(--ok);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px}
   .time-window-text{font-size:14px;font-weight:600}
@@ -1703,7 +1716,7 @@ function fsScheduleToEvent(si) {
     color = (meta && meta.color) ? meta.color : 'var(--p)';
     if (calId && !fsCalsInView.includes(calId)) fsCalsInView.push(calId);
   }
-  const base = { summary: si.title || '(Kein Titel)', _calColor: color, _calId: calId, _isTask: isTask, _auto: !!si.isAutoScheduled, _done: !!si.completed };
+  const base = { summary: si.title || '(Kein Titel)', _calColor: color, _calId: calId, _isTask: isTask, _auto: !!si.isAutoScheduled, _done: !!si.completed, _itemId: si.itemId || null };
   if (si.allDay) {
     return { ...base, start: { date: (si.startTime || '').slice(0,10) }, end: { date: (si.endTime || si.startTime || '').slice(0,10) } };
   }
@@ -1825,6 +1838,8 @@ function calColor(id) {
   return map[String(id)] || 'var(--p)';
 }
 
+function escAttr(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
 function renderCalEvent(ev) {
   const allDay   = !ev.start.dateTime;
   const timeStr  = allDay ? 'Ganztägig' : fmtTime(ev.start.dateTime) + '–' + fmtTime(ev.end.dateTime);
@@ -1835,14 +1850,78 @@ function renderCalEvent(ev) {
   const nowBadge = eventIsNow(ev) ? `<span style="font-size:10px;font-weight:700;color:var(--p);text-transform:uppercase;margin-left:6px">Jetzt</span>` : '';
   const icon     = ev._isTask ? (ev._auto ? '🧩 ' : '📌 ') : '';
   const doneStyle= ev._done ? 'text-decoration:line-through;opacity:.6' : '';
-  return `<div class="cal-event ${nowCls} ${pastCls}">
-    <div class="cal-event-bar" style="background:${color}"></div>
+
+  // Tasks: abhakbare Checkbox (schließt in FlowSavvy + TickTick ab). Events: Farbbalken.
+  let left, taskCls = '';
+  if (ev._isTask && ev._itemId) {
+    taskCls = ' task';
+    const occ = (ev.start.dateTime || ev.start.date || '').slice(0, 10);
+    left = ev._done
+      ? `<div class="cal-cb done"></div>`
+      : `<div class="cal-cb" data-title="${escAttr(ev.summary)}" data-date="${occ}" onclick="completeCalTask('${ev._itemId}', this)"></div>`;
+  } else {
+    left = `<div class="cal-event-bar" style="background:${color}"></div>`;
+  }
+
+  return `<div class="cal-event ${nowCls} ${pastCls}${taskCls}">
+    ${left}
     <div style="flex:1;min-width:0">
       <div class="cal-time" style="min-width:0">${timeStr}${nowBadge}</div>
       <div class="cal-title" style="${doneStyle}">${icon}${ev.summary || '(Kein Titel)'}</div>
       ${loc}
     </div>
   </div>`;
+}
+
+// Task im Kalender abhaken: erst FlowSavvy, dann (per Titel gematchten) TickTick-Task.
+async function completeCalTask(itemId, cbEl) {
+  if (!itemId || !cbEl || cbEl.classList.contains('done') || cbEl.classList.contains('pending')) return;
+  const title = cbEl.dataset.title || '';
+  const occ   = cbEl.dataset.date || '';
+  cbEl.classList.add('pending');
+
+  // 1) FlowSavvy abschließen (Repeating-Tasks brauchen ggf. occurrenceDate)
+  let fsOk = false;
+  try {
+    await fsFetch('POST', `/api/tasks/${encodeURIComponent(itemId)}/complete`, {});
+    fsOk = true;
+  } catch(e) {
+    if (occ) { try { await fsFetch('POST', `/api/tasks/${encodeURIComponent(itemId)}/complete`, { occurrenceDate: occ }); fsOk = true; } catch(_) {} }
+  }
+  if (!fsOk) {
+    cbEl.classList.remove('pending');
+    toast('Fehler beim Abhaken in FlowSavvy');
+    return;
+  }
+
+  cbEl.classList.remove('pending');
+  cbEl.classList.add('done');
+  const card = cbEl.closest('.cal-event');
+  const titleEl = card?.querySelector('.cal-title');
+  if (titleEl) { titleEl.style.textDecoration = 'line-through'; titleEl.style.opacity = '.6'; }
+
+  // 2) Passenden TickTick-Task (per Titel) ebenfalls abschließen
+  let ttDone = false;
+  const norm = s => (s || '').trim().toLowerCase();
+  const match = (ttAllTasks || []).find(t => t.status !== 2 && norm(t.title) === norm(title));
+  if (match) {
+    const ok = await ttFetch('/project/' + match.projectId + '/task/' + match.id + '/complete', { method: 'POST' });
+    if (ok !== null) {
+      ttDone = true;
+      match.status = 2;
+      const tt = ttTasks.find(x => x.id === match.id);
+      if (tt) tt.status = 2;
+      const tRow = document.querySelector(`.tt-task[data-tid="${match.id}"]`);
+      tRow?.classList.add('done');
+      tRow?.querySelector('.tt-cb')?.classList.add('done');
+    }
+  }
+
+  confetti();
+  toast(ttDone ? '✓ In FlowSavvy & TickTick erledigt!' : '✓ Erledigt!');
+  renderDaySummary();
+  if (ttDone) renderTTTasks();
+  loadSchedule(false); // Plan neu laden, damit erledigte Tasks verschwinden
 }
 
 function renderFreeWindow(win) {
@@ -1869,7 +1948,18 @@ function renderCalendar(events) {
   const todayEvs = events.filter(ev => (ev.start.dateTime || ev.start.date || '').startsWith(TD));
   calTodayCount = todayEvs.length;
   renderDaySummary();
-  let html = fsCalLegendHtml() + `<div class="sec">HEUTE</div>`;
+
+  // Header mit Datum + kompakter Übersicht (Aufgaben / Termine)
+  const headDate  = TODAY.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+  const openTasks = todayEvs.filter(ev => ev._isTask && !ev._done).length;
+  const evCount   = todayEvs.filter(ev => !ev._isTask).length;
+  const subParts  = [];
+  subParts.push(`✅ ${openTasks} offene Aufgabe${openTasks === 1 ? '' : 'n'}`);
+  subParts.push(`📅 ${evCount} Termin${evCount === 1 ? '' : 'e'}`);
+  let html = `<div class="cal-today-head">
+      <div class="cal-today-date">${headDate}</div>
+      <div class="cal-today-sub">${subParts.join('  ·  ')}</div>
+    </div>` + fsCalLegendHtml() + `<div class="sec">HEUTE</div>`;
 
   if (!todayEvs.length) {
     html += `<div class="empty" style="padding:28px 24px"><div class="ei">🎯</div><div class="et">Freier Tag!</div><div class="ed">Perfekt für deine Gewohnheiten.</div></div>`;
@@ -1890,7 +1980,14 @@ function renderCalendar(events) {
       ...windows.map(win  => ({ type: 'window', item: win, time: win.start }))
     ].sort((a, b) => a.time - b.time);
 
+    const now = new Date();
+    let nowLineShown = false;
     timeline.forEach(entry => {
+      // Einmalige "Jetzt"-Trennlinie vor dem ersten noch kommenden Eintrag
+      if (!nowLineShown && entry.time > now) {
+        html += `<div class="cal-now-line"><span>Jetzt ${now.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}</span></div>`;
+        nowLineShown = true;
+      }
       if (entry.type === 'event')  html += renderCalEvent(entry.item);
       else                         html += renderFreeWindow(entry.item);
     });
@@ -1913,20 +2010,11 @@ function renderCalendar(events) {
       if (!dayEvs.length) return;
       const d = new Date(day + 'T12:00:00');
       const dayLabel = `${DAYS[d.getDay()]}, ${d.getDate()}. ${MONTHS[d.getMonth()].substring(0,3)}.`;
-      html += `<div class="day-header"><div class="day-label">${dayLabel}</div></div>`;
-      dayEvs.slice(0, 3).forEach(ev => {
-        const color   = ev._calColor || 'var(--p)';
-        const timeStr = ev.start.dateTime ? fmtTime(ev.start.dateTime) : 'Ganztägig';
-        const icon    = ev._isTask ? (ev._auto ? '🧩 ' : '📌 ') : '';
-        html += `<div class="cal-event">
-          <div class="cal-event-bar" style="background:${color}"></div>
-          <div style="flex:1;min-width:0">
-            <div class="cal-time">${timeStr}</div>
-            <div class="cal-title">${icon}${ev.summary || '(Kein Titel)'}</div>
-          </div>
-        </div>`;
-      });
-      if (dayEvs.length > 3) html += `<div style="text-align:right;padding:0 20px 6px;font-size:12px;color:var(--t2)">+ ${dayEvs.length - 3} weitere</div>`;
+      const openCount = dayEvs.filter(ev => ev._isTask && !ev._done).length;
+      const countBadge = openCount ? `<span class="tt-tag" style="margin-left:auto">${openCount} offen</span>` : '';
+      html += `<div class="day-header"><div class="day-label">${dayLabel}</div>${countBadge}</div>`;
+      dayEvs.slice(0, 4).forEach(ev => { html += renderCalEvent(ev); });
+      if (dayEvs.length > 4) html += `<div style="text-align:right;padding:0 20px 6px;font-size:12px;color:var(--t2)">+ ${dayEvs.length - 4} weitere</div>`;
     });
   }
 
