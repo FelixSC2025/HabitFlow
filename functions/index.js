@@ -174,21 +174,24 @@ exports.garmin = onCall({ region: 'us-central1', timeoutSeconds: 60, memory: '51
 
   let authed = false;
 
+  let authVia = null;
+
   // 1) Gecachten Token aus Firestore (bevorzugt — oauth2 wird per oauth1 auto-refreshed).
   try {
     const snap = await tokenRef.get();
     const tok = snap.exists ? snap.data().token : null;
-    if (tok && tok.oauth1 && tok.oauth2) { client.loadToken(tok.oauth1, tok.oauth2); authed = true; }
+    if (tok && tok.oauth1 && tok.oauth2) { client.loadToken(tok.oauth1, tok.oauth2); authed = true; authVia = 'firestore-cache'; }
   } catch (_) {}
 
   // 2) Vom Client mitgeschickter Token (lokal via scripts/garmin-token.js erzeugt).
-  if (!authed && tokenB64) {
+  //    Frisch mitgeschickter Token hat Vorrang vor evtl. altem Cache.
+  if (tokenB64) {
     const tok = decodeToken(tokenB64);
     if (tok && tok.oauth1 && tok.oauth2) {
       client.loadToken(tok.oauth1, tok.oauth2);
-      authed = true;
+      authed = true; authVia = 'client-token';
       try { await tokenRef.set({ token: tok, at: Date.now() }, { merge: true }); } catch (_) {}
-    } else {
+    } else if (!authed) {
       return { ok: false, error: 'bad-token', message: 'Token-String ungültig — bitte lokal neu erzeugen.' };
     }
   }
@@ -200,12 +203,15 @@ exports.garmin = onCall({ region: 'us-central1', timeoutSeconds: 60, memory: '51
     }
     try {
       await client.login();
-      authed = true;
+      authed = true; authVia = 'password-login';
       try { await tokenRef.set({ token: client.exportToken(), at: Date.now() }, { merge: true }); } catch (_) {}
     } catch (e) {
+      console.error('garmin login-failed:', e.message);
       return { ok: false, error: 'login-failed', message: e.message };
     }
   }
+
+  console.log('garmin auth via:', authVia);
 
   // Datenabruf. Kein erneuter Passwort-Login bei Fehlern — die Library
   // refreshed oauth2 selbst; scheitert das, ist der oauth1-Token abgelaufen.
