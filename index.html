@@ -11,7 +11,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
-  <style>
+  <style> abc
   :root {
     --bg:#f5f5fa; --s1:#ffffff; --s2:#ededf5; --s3:#e0e0ee;
     --border:#d0d0e8; --t1:#111118; --t2:#5a5a80; --t3:#9090b0;
@@ -2968,23 +2968,17 @@ async function saveEvening() {
 // Aufgaben (TickTick/Top 3), Gewohnheiten, Zielen, Stimmungstrend und
 // – falls verbunden – Garmin-Schlaf/-Gesundheitsdaten.
 
-const BRIEFING_PROMPT = `Du bist der persönliche Executive Assistant des Nutzers (Felix). Erstelle ein Morgen-Briefing, das sich wie die Zusammenfassung eines erfahrenen Chief of Staff anfühlt. Nutze ausschließlich die unten bereitgestellten Daten (Kalender, Aufgaben, Ziele, Gewohnheiten, Schlaf/Gesundheit, vergangene Tage). Erfinde keine Termine oder Fakten, die nicht in den Daten stehen.
+const BRIEFING_PROMPT = `Du bist der persönliche Chief of Staff des Nutzers (Felix). Erstelle ein knappes Morgen-Briefing, das in unter einer Minute gelesen ist und nur das enthält, was heute wirklich zählt. Nutze ausschließlich die unten bereitgestellten Daten (Kalender, Aufgaben, Ziele, Gewohnheiten, Schlaf/Gesundheit, vergangene Tage). Erfinde nichts.
 
-Priorisiere Wirkung statt Vollständigkeit. Hebe die 1–3 wichtigsten Aufgaben hervor, identifiziere Risiken, Chancen und Engpässe und gib konkrete Empfehlungen. Vermeide allgemeine Motivationssprüche. Sei präzise, vorausschauend und handlungsorientiert. Wenn Muster oder Probleme erkennbar sind (z. B. wiederholt verschobene/überfällige Aufgaben, sinkende Stimmung, schlechter Schlaf), sprich sie direkt an und schlage Lösungen vor.
+Sei radikal selektiv: Nenne nur, was heute eine Entscheidung oder Handlung erfordert. Keine Begrüßungsfloskeln, keine Motivationssprüche, keine Nacherzählung des Kalenders oder der Datenlage. Wenn etwas unauffällig oder ohne Daten ist, lass es komplett weg statt es zu erwähnen.
 
-Antworte auf Deutsch. Gliedere in genau diese Abschnitte, jeweils als Überschrift mit "## ":
-## Begrüßung
-## Tageszusammenfassung
-## Wichtigste Priorität
-## Top-3-Aufgaben
-## Kalenderüberblick
-## Risiken
-## Chancen
-## Gesundheit & Energie
-## Fortschritt der Ziele
-## Handlungsempfehlung zum Abschluss
+Antworte auf Deutsch. Verwende maximal diese Abschnitte (Überschrift mit "## "), und nur die, für die es relevanten Inhalt gibt:
+## Das Wichtigste heute — 1–2 Sätze: die eine Priorität des Tages und warum jetzt.
+## Top-Aufgaben — maximal 3 Stichpunkte, jeweils mit konkretem nächsten Schritt.
+## Achtung — nur echte Risiken, Konflikte oder Muster (z. B. Terminkollision, wiederholt verschobene Aufgabe, schlechter Schlaf) mit je einem Lösungsvorschlag. Weglassen, wenn nichts auffällt.
+## Energie — 1 Satz zu Schlaf/Erholung nur, wenn er die Tagesplanung beeinflussen sollte.
 
-Halte dich kurz: maximal 3–5 Minuten Lesezeit (ca. 350–500 Wörter gesamt). Fehlt eine Datenquelle, halte den entsprechenden Abschnitt knapp statt zu spekulieren.`;
+Hartes Limit: maximal 120 Wörter gesamt. Kürze lieber weiter, statt das Limit zu reißen.`;
 
 let briefingBusy = false;
 
