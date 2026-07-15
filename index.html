@@ -3178,9 +3178,8 @@ async function generateBriefing(force) {
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-8',
-        max_tokens: 1600,
-        thinking: { type: 'adaptive' },
+        model: 'claude-haiku-4-5',
+        max_tokens: 4000,
         messages: [{ role: 'user', content: prompt }]
       })
     });
@@ -4151,9 +4150,8 @@ Sei direkt, ehrlich und motivierend. Maximal ${ttWeekSummary ? '150' : '120'} WÃ
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-8',
-        max_tokens: 650,
-        thinking: { type: 'adaptive' },
+        model: 'claude-haiku-4-5',
+        max_tokens: 4000,
         messages: [{ role: 'user', content: prompt }]
       })
     });
